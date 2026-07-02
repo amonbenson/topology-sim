@@ -35,6 +35,13 @@ export default class ResistorNetwork {
   readonly onConfigurationChange: Event<void> = this.configurationChangeEmitter.event;
 
   constructor() {
+    for (const resistor of this.resistors) {
+      resistor.onResistanceChange(() => {
+        this.recalculateOutputVoltage();
+        this.configurationChangeEmitter.fire();
+      });
+    }
+
     this.recalculateOutputVoltage();
   }
 
