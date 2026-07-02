@@ -19,3 +19,18 @@
 
 @custom-variant touch (@media (pointer: coarse));
 @custom-variant mouse (@media (pointer: fine));
+
+@layer components {
+  .circuit-wire {
+    @apply bg-current;
+  }
+
+  .circuit-node {
+    @apply relative;
+
+    &::after {
+      content: "";
+      @apply absolute left-1/2 top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white;
+    }
+  }
+}

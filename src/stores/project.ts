@@ -77,8 +77,29 @@ export const useProjectStore = defineStore("project", () => {
     ),
   }));
 
+  const lowTapIndex = useProperty(
+    () => resistorNetwork.getLowTapIndex(),
+    index => setTapRole(index, "low"),
+    resistorNetwork.onConfigurationChange,
+  );
+
+  const highTapIndex = useProperty(
+    () => resistorNetwork.getHighTapIndex(),
+    index => setTapRole(index, "high"),
+    resistorNetwork.onConfigurationChange,
+  );
+
+  const outputTapIndex = useProperty(
+    () => resistorNetwork.getOutputTapIndex(),
+    index => setTapRole(index, "output"),
+    resistorNetwork.onConfigurationChange,
+  );
+
   return {
     resistorNetwork,
     taps,
+    lowTapIndex,
+    highTapIndex,
+    outputTapIndex,
   };
 });
