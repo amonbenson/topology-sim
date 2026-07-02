@@ -1,0 +1,21 @@
+@import "tailwindcss";
+@import "tailwindcss-primeui";
+@import "primeicons/primeicons.css";
+
+@theme {
+  --color-surface: var(--p-content-background);
+  --color-surface-alt: var(--p-content-hover-background);
+}
+
+@layer base {
+  html, body, #app {
+    @apply size-full select-none bg-surface;
+  }
+
+  kbd {
+    @apply bg-(--p-button-secondary-background) text-(--p-button-secondary-color) border border-(--p-button-secondary-color)/20 px-1.5 py-0.5 rounded shadow-sm not-italic font-[80%] text-xs;
+  }
+}
+
+@custom-variant touch (@media (pointer: coarse));
+@custom-variant mouse (@media (pointer: fine));
