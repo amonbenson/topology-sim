@@ -27,11 +27,7 @@ export default class NetworkTopology {
   private lowVoltage = 0;
   private highVoltage = 3.3;
 
-  // A resistor in series between each driven rail and its arm. Defaults to 0
-  // (rail voltage applied directly to the tap, as if there were no protection
-  // resistor at all). A nonzero value lets current flowing through a driven
-  // arm be sensed as a voltage drop at that arm's own tap, which is what
-  // makes the arm's resistance observable from its tap voltage alone.
+  // A resistor in series between each driven rail and its arm.
   private protectionResistance = 0;
 
   private readonly voltageChangeEmitter = new Emitter<void>();

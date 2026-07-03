@@ -13,6 +13,38 @@ function buildTopology(armResistances: readonly [number, number, number]): Netwo
 }
 
 describe("NetworkSolver", () => {
+  it("measures the topology's actual high rail voltage instead of assuming one", async () => {
+    const topology = buildTopology([10, 22, 47]);
+    topology.setHighVoltage(9);
+    const solver = new NetworkSolver(topology);
+
+    expect(solver.getHighRailVoltage()).toBeNaN();
+
+    const result = await solver.solve();
+
+    expect(solver.getHighRailVoltage()).toBeCloseTo(9);
+    expect(solver.getLowRailVoltage()).toBeCloseTo(0);
+    expect(result.totalResistance).toBeCloseTo(10 + 22 + 47);
+  });
+
+  it("measures the topology's actual low rail voltage instead of assuming it's 0", async () => {
+    const topology = buildTopology([10, 22, 47]);
+    topology.setLowVoltage(1.2);
+    topology.setHighVoltage(4.5);
+    const solver = new NetworkSolver(topology);
+
+    expect(solver.getLowRailVoltage()).toBeNaN();
+
+    const result = await solver.solve();
+
+    expect(solver.getLowRailVoltage()).toBeCloseTo(1.2);
+    expect(solver.getHighRailVoltage()).toBeCloseTo(4.5);
+    expect(result.arms[0]).toBeCloseTo(10 / 79);
+    expect(result.arms[1]).toBeCloseTo(22 / 79);
+    expect(result.arms[2]).toBeCloseTo(47 / 79);
+    expect(result.totalResistance).toBeCloseTo(79);
+  });
+
   it("resolves a generic three-finite-arm topology into normalized ratios and the total resistance", async () => {
     const armResistances = [10, 22, 47] as const;
     const solver = new NetworkSolver(buildTopology(armResistances));
@@ -140,8 +172,11 @@ describe("NetworkSolver", () => {
     await solver.solve();
 
     expect(statuses[0]).toContain("Starting detection");
-    expect(statuses[1]).toBe("Driving Tap 1 high, Tap 2 low, Tap 3 floating…");
-    expect(statuses[2]).toBe("Driving Tap 2 high, Tap 3 low, Tap 1 floating…");
+    expect(statuses[1]).toContain("Measuring high rail voltage");
+    expect(statuses[2]).toContain("Measuring low rail voltage");
+    expect(statuses[3]).toContain("Measured supply rails");
+    expect(statuses[4]).toBe("Driving Tap 1 high, Tap 2 low, Tap 3 floating…");
+    expect(statuses[5]).toBe("Driving Tap 2 high, Tap 3 low, Tap 1 floating…");
     expect(statuses.at(-1)).toContain("Solved —");
     expect(solver.getStatus()).toBe(statuses.at(-1));
   });

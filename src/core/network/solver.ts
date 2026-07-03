@@ -26,11 +26,10 @@ interface PairMeasurement {
 }
 
 export interface NetworkSolverOptions {
-  readonly supplyVoltage?: number;
   readonly protectionResistance?: number;
   readonly openVoltageThreshold?: number;
   readonly shortResistanceThreshold?: number;
-  readonly supplyConsistencyThreshold?: number;
+  readonly railConsistencyThreshold?: number;
   readonly consistencyRelativeThreshold?: number;
   readonly ratioDivisionEpsilon?: number;
   // How long to pause after each measurement step, so a caller can visually
@@ -45,11 +44,14 @@ export interface NetworkSolverOptions {
 // same measurement protocol a real three-terminal detector circuit would use.
 export default class NetworkSolver {
   private readonly topology: NetworkTopology;
-  private readonly supplyVoltage: number;
+  // Neither rail voltage is known in advance — both are fixed properties of
+  // the topology, measured directly rather than assumed or configured.
+  private highRailVoltage = NaN;
+  private lowRailVoltage = NaN;
   private readonly protectionResistance: number;
   private readonly openVoltageThreshold: number;
   private readonly shortResistanceThreshold: number;
-  private readonly supplyConsistencyThreshold: number;
+  private readonly railConsistencyThreshold: number;
   private readonly consistencyRelativeThreshold: number;
   private readonly ratioDivisionEpsilon: number;
   private readonly stepDelayMs: number;
@@ -66,11 +68,10 @@ export default class NetworkSolver {
     }
 
     this.topology = topology;
-    this.supplyVoltage = options.supplyVoltage ?? 3.3;
     this.protectionResistance = options.protectionResistance ?? 100;
     this.openVoltageThreshold = options.openVoltageThreshold ?? 1e-9;
     this.shortResistanceThreshold = options.shortResistanceThreshold ?? 1e-6;
-    this.supplyConsistencyThreshold = options.supplyConsistencyThreshold ?? 1e-9;
+    this.railConsistencyThreshold = options.railConsistencyThreshold ?? 1e-9;
     this.consistencyRelativeThreshold = options.consistencyRelativeThreshold ?? 1e-6;
     this.ratioDivisionEpsilon = options.ratioDivisionEpsilon ?? 1e-12;
     this.stepDelayMs = options.stepDelayMs ?? 0;
@@ -80,12 +81,19 @@ export default class NetworkSolver {
     return this.status;
   }
 
+  getHighRailVoltage(): number {
+    return this.highRailVoltage;
+  }
+
+  getLowRailVoltage(): number {
+    return this.lowRailVoltage;
+  }
+
   async solve(): Promise<NetworkSolution> {
     this.reportStatus("Starting detection…");
-
-    this.topology.setLowVoltage(0);
-    this.topology.setHighVoltage(this.supplyVoltage);
     this.topology.setProtectionResistance(this.protectionResistance);
+
+    await this.measureRailVoltages();
 
     const measurementAB = await this.measurePair(0, 1); // A high, B low: ratio = rB / (rA + rB)
     const measurementBC = await this.measurePair(1, 2); // B high, C low: ratio = rC / (rB + rC)
@@ -168,6 +176,28 @@ export default class NetworkSolver {
     return { arms: unresolvedArms, totalResistance: measurement.pairResistance };
   }
 
+  // Drives a single arm at a time, with the other two left floating, so it
+  // carries no current no matter what any arm's resistance is — that tap
+  // therefore reads exactly its rail voltage, with no ambiguity, which is
+  // the only way to learn each rail's true value from voltage alone.
+  private async measureRailVoltages(): Promise<void> {
+    this.reportStatus("Measuring high rail voltage…");
+    this.topology.setArmRole(0, "high");
+    this.topology.setArmRole(1, "floating");
+    this.topology.setArmRole(2, "floating");
+    await this.delay();
+    this.highRailVoltage = this.topology.getArmVoltage(0);
+
+    this.reportStatus("Measuring low rail voltage…");
+    this.topology.setArmRole(0, "low");
+    await this.delay();
+    this.lowRailVoltage = this.topology.getArmVoltage(0);
+
+    this.reportStatus(
+      `Measured supply rails: low=${this.lowRailVoltage.toFixed(3)} V, high=${this.highRailVoltage.toFixed(3)} V`,
+    );
+  }
+
   private async measurePair(highIndex: number, lowIndex: number): Promise<PairMeasurement> {
     const floatingIndex = 3 - highIndex - lowIndex;
 
@@ -186,20 +216,27 @@ export default class NetworkSolver {
     const floatingVoltage = this.topology.getArmVoltage(floatingIndex);
 
     // The same current flows through both protection resistors in a simple
-    // two-arm loop, so their voltages must always sum back to the supply.
-    if (Math.abs(highVoltage + lowVoltage - this.supplyVoltage) > this.supplyConsistencyThreshold) {
+    // two-arm loop, so both taps must always sum back to the (now known)
+    // combined rail voltage.
+    const railSum = this.highRailVoltage + this.lowRailVoltage;
+    if (Math.abs(highVoltage + lowVoltage - railSum) > this.railConsistencyThreshold) {
       throw new NetworkSolverError(
-        `Supply voltage identity violated: high=${highVoltage.toFixed(6)}, low=${lowVoltage.toFixed(6)}`,
+        `Supply rail identity violated: high=${highVoltage.toFixed(6)}, low=${lowVoltage.toFixed(6)}, expected sum=${railSum.toFixed(6)}`,
       );
     }
 
-    const conducts = lowVoltage > this.openVoltageThreshold;
+    // Current flowing through the low-side protection resistor raises that
+    // tap above its true (measured) rail voltage — that rise is the signal
+    // both for whether this pair conducts at all and for the pair's
+    // resistance, replacing the old assumption that the low rail sits at 0V.
+    const lowRise = lowVoltage - this.lowRailVoltage;
+    const conducts = lowRise > this.openVoltageThreshold;
     if (!conducts) {
       return { conducts: false, pairResistance: NaN, lowResistanceFraction: NaN };
     }
 
     const voltageSpan = highVoltage - lowVoltage;
-    const pairResistance = this.protectionResistance * voltageSpan / lowVoltage;
+    const pairResistance = this.protectionResistance * voltageSpan / lowRise;
     const lowResistanceFraction = voltageSpan > this.ratioDivisionEpsilon
       ? (floatingVoltage - lowVoltage) / voltageSpan
       : NaN;

@@ -107,7 +107,7 @@ function formatVoltage(value: number): string {
         stroke="none"
         fill="currentColor"
       >
-        R{{ i + 1 }}: {{ formatResistance(arms[i].resistance) }} &#x3A9;
+        R{{ i + 1 }}: {{ formatResistance(arms[i].resistance) }} k&#x3A9;
       </text>
 
       <!-- Tap junction -->

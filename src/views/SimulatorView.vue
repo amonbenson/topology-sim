@@ -78,7 +78,7 @@ const roleOptions: { label: string; value: ArmRole }[] = [
       </div>
 
       <div class="flex flex-col gap-2">
-        <label :for="`resistance-${arm.index}`">Resistance (Ω)</label>
+        <label :for="`resistance-${arm.index}`">Resistance (k&#x3A9;)</label>
         <div class="flex gap-2">
           <InputNumber
             :id="`resistance-${arm.index}`"
