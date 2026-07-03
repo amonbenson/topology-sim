@@ -19,41 +19,41 @@ export interface ResistorArm {
 }
 
 export const useProjectStore = defineStore("project", () => {
-  const networkTopology = new NetworkTopology();
-  const networkSolver = new NetworkSolver(networkTopology, { stepDelayMs: 600 });
+  const topology = new NetworkTopology();
+  const solver = new NetworkSolver(topology, { stepDelayMs: 1000 });
 
-  const arms = Array.from({ length: networkTopology.armCount }, (_, index) => ({
+  const arms = Array.from({ length: topology.armCount }, (_, index) => ({
     index,
     role: useProperty(
-      () => networkTopology.getArmRole(index),
-      (role: ArmRole) => networkTopology.setArmRole(index, role),
-      networkTopology.onVoltageChange,
+      () => topology.getArmRole(index),
+      (role: ArmRole) => topology.setArmRole(index, role),
+      topology.onVoltageChange,
     ),
     resistance: useProperty(
-      () => networkTopology.getArmResistance(index),
-      (value: number) => networkTopology.setArmResistance(index, value),
-      networkTopology.onVoltageChange,
+      () => topology.getArmResistance(index),
+      (value: number) => topology.setArmResistance(index, value),
+      topology.onVoltageChange,
     ),
     voltage: useProperty(
-      () => networkTopology.getArmVoltage(index),
+      () => topology.getArmVoltage(index),
       (_) => {},
-      networkTopology.onVoltageChange,
+      topology.onVoltageChange,
     ),
   }));
 
   const lowVoltage = useProperty(
-    () => networkTopology.getLowVoltage(),
-    (value: number) => networkTopology.setLowVoltage(value),
-    networkTopology.onVoltageChange,
+    () => topology.getLowVoltage(),
+    (value: number) => topology.setLowVoltage(value),
+    topology.onVoltageChange,
   );
 
   const highVoltage = useProperty(
-    () => networkTopology.getHighVoltage(),
-    (value: number) => networkTopology.setHighVoltage(value),
-    networkTopology.onVoltageChange,
+    () => topology.getHighVoltage(),
+    (value: number) => topology.setHighVoltage(value),
+    topology.onVoltageChange,
   );
 
-  const solverStatus = useEvent(networkSolver.onStatusChange, () => networkSolver.getStatus());
+  const solverStatus = useEvent(solver.onStatusChange, () => solver.getStatus());
   const isSolving = ref(false);
 
   async function runDetection(): Promise<void> {
@@ -63,14 +63,14 @@ export const useProjectStore = defineStore("project", () => {
 
     isSolving.value = true;
     try {
-      await networkSolver.solve();
+      await solver.solve();
     } finally {
       isSolving.value = false;
     }
   }
 
   return {
-    networkTopology,
+    topology,
     arms,
     lowVoltage,
     highVoltage,

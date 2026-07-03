@@ -128,8 +128,7 @@ export default class NetworkTopology {
 
     // Floating arms carry no current, so their tap settles at the star-point
     // voltage formed by the voltage divider of whichever arms are actively driven.
-    // If no arm is driving the network (e.g. all arms are floating), that
-    // voltage is undefined.
+    // If no arm is driving the (e.g. all arms are floating), that voltage is undefined.
     const starPointVoltage = conductanceSum === 0 ? NaN : weightedVoltageSum / conductanceSum;
 
     for (const arm of this.arms) {

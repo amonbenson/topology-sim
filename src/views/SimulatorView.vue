@@ -28,14 +28,14 @@ const roleOptions: { label: string; value: ArmRole }[] = [
     />
     <p
       v-if="store.isSolving || store.solverStatus"
-      class="text-center text-sm text-surface-alt"
+      class="text-center text-sm text-muted"
     >
       {{ store.solverStatus }}
     </p>
 
     <!-- Supply Voltage -->
     <div
-      class="flex flex-col gap-3 rounded-lg border border-surface-alt p-4"
+      class="flex flex-col gap-3 rounded-lg bg-surface-alt p-4"
     >
       <div class="flex flex-col gap-2">
         <label :for="`voltage-low`">Low Voltage (V)</label>
@@ -64,7 +64,7 @@ const roleOptions: { label: string; value: ArmRole }[] = [
     <div
       v-for="arm in store.arms"
       :key="arm.index"
-      class="flex flex-col gap-3 rounded-lg border border-surface-alt p-4"
+      class="flex flex-col gap-3 rounded-lg bg-surface-alt p-4"
     >
       <div class="flex items-center justify-between">
         <span class="font-medium">Tap {{ arm.index + 1 }}</span>

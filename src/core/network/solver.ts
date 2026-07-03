@@ -39,12 +39,12 @@ export interface NetworkSolverOptions {
   readonly stepDelayMs?: number;
 }
 
-// Identifies the three arm resistances of a star-connected resistor network
+// Identifies the three arm resistances of a star-connected resistor topology
 // by driving each pair of terminals high/low (third floating) in turn and
-// reading tap voltages only (never the network's own rail setpoints) — the
+// reading tap voltages only (never the topology's own rail setpoints) — the
 // same measurement protocol a real three-terminal detector circuit would use.
 export default class NetworkSolver {
-  private readonly network: NetworkTopology;
+  private readonly topology: NetworkTopology;
   private readonly supplyVoltage: number;
   private readonly protectionResistance: number;
   private readonly openVoltageThreshold: number;
@@ -58,14 +58,14 @@ export default class NetworkSolver {
   private readonly statusChangeEmitter = new Emitter<string>();
   readonly onStatusChange: Event<string> = this.statusChangeEmitter.event;
 
-  constructor(network: NetworkTopology, options: NetworkSolverOptions = {}) {
-    if (network.armCount !== 3) {
+  constructor(topology: NetworkTopology, options: NetworkSolverOptions = {}) {
+    if (topology.armCount !== 3) {
       throw new NetworkSolverError(
-        `NetworkSolver requires a three-arm network, got ${network.armCount} arms`,
+        `NetworkSolver requires a three-arm topology, got ${topology.armCount} arms`,
       );
     }
 
-    this.network = network;
+    this.topology = topology;
     this.supplyVoltage = options.supplyVoltage ?? 3.3;
     this.protectionResistance = options.protectionResistance ?? 100;
     this.openVoltageThreshold = options.openVoltageThreshold ?? 1e-9;
@@ -83,9 +83,9 @@ export default class NetworkSolver {
   async solve(): Promise<NetworkSolution> {
     this.reportStatus("Starting detection…");
 
-    this.network.setLowVoltage(0);
-    this.network.setHighVoltage(this.supplyVoltage);
-    this.network.setProtectionResistance(this.protectionResistance);
+    this.topology.setLowVoltage(0);
+    this.topology.setHighVoltage(this.supplyVoltage);
+    this.topology.setProtectionResistance(this.protectionResistance);
 
     const measurementAB = await this.measurePair(0, 1); // A high, B low: ratio = rB / (rA + rB)
     const measurementBC = await this.measurePair(1, 2); // B high, C low: ratio = rC / (rB + rC)
@@ -144,7 +144,7 @@ export default class NetworkSolver {
     const c = unnormalizedC / unnormalizedSum;
 
     // Two independent estimates of the total resistance must agree, since
-    // they're both derived from the same underlying three-arm network.
+    // they're both derived from the same underlying three-arm topology.
     const scaleFromAB = measurementAB.pairResistance / (a + b);
     const scaleFromBC = measurementBC.pairResistance / (b + c);
     if (Math.abs(scaleFromAB - scaleFromBC) / (scaleFromAB + scaleFromBC) > this.consistencyRelativeThreshold) {
@@ -175,15 +175,15 @@ export default class NetworkSolver {
       `Driving Tap ${highIndex + 1} high, Tap ${lowIndex + 1} low, Tap ${floatingIndex + 1} floating…`,
     );
 
-    this.network.setArmRole(highIndex, "high");
-    this.network.setArmRole(lowIndex, "low");
-    this.network.setArmRole(floatingIndex, "floating");
+    this.topology.setArmRole(highIndex, "high");
+    this.topology.setArmRole(lowIndex, "low");
+    this.topology.setArmRole(floatingIndex, "floating");
 
     await this.delay();
 
-    const highVoltage = this.network.getArmVoltage(highIndex);
-    const lowVoltage = this.network.getArmVoltage(lowIndex);
-    const floatingVoltage = this.network.getArmVoltage(floatingIndex);
+    const highVoltage = this.topology.getArmVoltage(highIndex);
+    const lowVoltage = this.topology.getArmVoltage(lowIndex);
+    const floatingVoltage = this.topology.getArmVoltage(floatingIndex);
 
     // The same current flows through both protection resistors in a simple
     // two-arm loop, so their voltages must always sum back to the supply.

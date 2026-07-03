@@ -3,19 +3,19 @@ import { describe, expect, it } from "vitest";
 import NetworkSolver from "./solver";
 import NetworkTopology from "./topology";
 
-function buildNetwork(armResistances: readonly [number, number, number]): NetworkTopology {
-  const network = new NetworkTopology();
+function buildTopology(armResistances: readonly [number, number, number]): NetworkTopology {
+  const topology = new NetworkTopology();
   for (const [index, resistance] of armResistances.entries()) {
-    network.setArmResistance(index, resistance);
+    topology.setArmResistance(index, resistance);
   }
 
-  return network;
+  return topology;
 }
 
 describe("NetworkSolver", () => {
-  it("resolves a generic three-finite-arm network into normalized ratios and the total resistance", async () => {
+  it("resolves a generic three-finite-arm topology into normalized ratios and the total resistance", async () => {
     const armResistances = [10, 22, 47] as const;
-    const solver = new NetworkSolver(buildNetwork(armResistances));
+    const solver = new NetworkSolver(buildTopology(armResistances));
     const totalResistance = armResistances[0] + armResistances[1] + armResistances[2];
 
     const result = await solver.solve();
@@ -28,7 +28,7 @@ describe("NetworkSolver", () => {
 
   it("resolves a single zero arm as a regular case, not a short", async () => {
     const armResistances = [0, 100, 220] as const;
-    const solver = new NetworkSolver(buildNetwork(armResistances));
+    const solver = new NetworkSolver(buildTopology(armResistances));
     const totalResistance = armResistances[0] + armResistances[1] + armResistances[2];
 
     const result = await solver.solve();
@@ -40,7 +40,7 @@ describe("NetworkSolver", () => {
   });
 
   it("reports the A-B pair as an unresolvable sum when C is isolated (open)", async () => {
-    const solver = new NetworkSolver(buildNetwork([100, 900, Infinity]));
+    const solver = new NetworkSolver(buildTopology([100, 900, Infinity]));
 
     const result = await solver.solve();
 
@@ -51,7 +51,7 @@ describe("NetworkSolver", () => {
   });
 
   it("reports the B-C pair as an unresolvable sum when A is isolated (open)", async () => {
-    const solver = new NetworkSolver(buildNetwork([Infinity, 33, 47]));
+    const solver = new NetworkSolver(buildTopology([Infinity, 33, 47]));
 
     const result = await solver.solve();
 
@@ -62,7 +62,7 @@ describe("NetworkSolver", () => {
   });
 
   it("falls back to a third measurement when B is isolated (open), since neither of the first two pairs conducts", async () => {
-    const solver = new NetworkSolver(buildNetwork([47, Infinity, 100]));
+    const solver = new NetworkSolver(buildTopology([47, Infinity, 100]));
 
     const result = await solver.solve();
 
@@ -72,8 +72,8 @@ describe("NetworkSolver", () => {
     expect(result.totalResistance).toBeCloseTo(100 + 47);
   });
 
-  it("reports every arm as open when the network is fully disconnected", async () => {
-    const solver = new NetworkSolver(buildNetwork([Infinity, Infinity, Infinity]));
+  it("reports every arm as open when the topology is fully disconnected", async () => {
+    const solver = new NetworkSolver(buildTopology([Infinity, Infinity, Infinity]));
 
     const result = await solver.solve();
 
@@ -82,7 +82,7 @@ describe("NetworkSolver", () => {
   });
 
   it("detects an A-B terminal short with C still attached", async () => {
-    const solver = new NetworkSolver(buildNetwork([0, 0, 50]));
+    const solver = new NetworkSolver(buildTopology([0, 0, 50]));
 
     const result = await solver.solve();
 
@@ -91,7 +91,7 @@ describe("NetworkSolver", () => {
   });
 
   it("detects an A-C terminal short via the generic extraction path (not a directly driven pair)", async () => {
-    const solver = new NetworkSolver(buildNetwork([0, 470, 0]));
+    const solver = new NetworkSolver(buildTopology([0, 470, 0]));
 
     const result = await solver.solve();
 
@@ -102,7 +102,7 @@ describe("NetworkSolver", () => {
   });
 
   it("detects an A-B terminal short with C isolated (open)", async () => {
-    const solver = new NetworkSolver(buildNetwork([0, 0, Infinity]));
+    const solver = new NetworkSolver(buildTopology([0, 0, Infinity]));
 
     const result = await solver.solve();
 
@@ -111,7 +111,7 @@ describe("NetworkSolver", () => {
   });
 
   it("detects all three terminals shorted together", async () => {
-    const solver = new NetworkSolver(buildNetwork([0, 0, 0]));
+    const solver = new NetworkSolver(buildTopology([0, 0, 0]));
 
     const result = await solver.solve();
 
@@ -121,7 +121,7 @@ describe("NetworkSolver", () => {
 
   it("recovers each arm's actual resistance from totalResistance times its normalized fraction", async () => {
     const armResistances = [150, 330, 220] as const;
-    const solver = new NetworkSolver(buildNetwork(armResistances));
+    const solver = new NetworkSolver(buildTopology(armResistances));
 
     const result = await solver.solve();
 
@@ -131,7 +131,7 @@ describe("NetworkSolver", () => {
   });
 
   it("reports status updates describing each measurement step and the final result", async () => {
-    const solver = new NetworkSolver(buildNetwork([100, 200, 300]));
+    const solver = new NetworkSolver(buildTopology([100, 200, 300]));
     const statuses: string[] = [];
     solver.onStatusChange((status) => {
       statuses.push(status);
@@ -147,43 +147,43 @@ describe("NetworkSolver", () => {
   });
 
   it("resolves instantly with the default (zero) step delay, and still resolves with a configured delay", async () => {
-    const instantSolver = new NetworkSolver(buildNetwork([100, 200, 300]));
+    const instantSolver = new NetworkSolver(buildTopology([100, 200, 300]));
     const start = performance.now();
     await instantSolver.solve();
     expect(performance.now() - start).toBeLessThan(50);
 
-    const delayedSolver = new NetworkSolver(buildNetwork([100, 200, 300]), { stepDelayMs: 10 });
+    const delayedSolver = new NetworkSolver(buildTopology([100, 200, 300]), { stepDelayMs: 10 });
     const result = await delayedSolver.solve();
     expect(result.totalResistance).toBeCloseTo(600);
   });
 
-  it("only ever reads tap voltages, never the network's own rail setpoints", async () => {
-    const network = buildNetwork([100, 200, 300]);
-    const originalGetLowVoltage = network.getLowVoltage;
-    const originalGetHighVoltage = network.getHighVoltage;
+  it("only ever reads tap voltages, never the topology's own rail setpoints", async () => {
+    const topology = buildTopology([100, 200, 300]);
+    const originalGetLowVoltage = topology.getLowVoltage;
+    const originalGetHighVoltage = topology.getHighVoltage;
 
     let lowVoltageReadCount = 0;
     let highVoltageReadCount = 0;
-    network.getLowVoltage = (): number => {
+    topology.getLowVoltage = (): number => {
       lowVoltageReadCount++;
-      return originalGetLowVoltage.call(network);
+      return originalGetLowVoltage.call(topology);
     };
 
-    network.getHighVoltage = (): number => {
+    topology.getHighVoltage = (): number => {
       highVoltageReadCount++;
-      return originalGetHighVoltage.call(network);
+      return originalGetHighVoltage.call(topology);
     };
 
-    await new NetworkSolver(network).solve();
+    await new NetworkSolver(topology).solve();
 
     expect(lowVoltageReadCount).toBe(0);
     expect(highVoltageReadCount).toBe(0);
   });
 
-  it("throws when constructed with a network that doesn't have exactly three arms", () => {
-    const network = buildNetwork([100, 200, 300]);
-    Object.defineProperty(network, "armCount", { value: 4 });
+  it("throws when constructed with a topology that doesn't have exactly three arms", () => {
+    const topology = buildTopology([100, 200, 300]);
+    Object.defineProperty(topology, "armCount", { value: 4 });
 
-    expect(() => new NetworkSolver(network)).toThrow();
+    expect(() => new NetworkSolver(topology)).toThrow();
   });
 });
