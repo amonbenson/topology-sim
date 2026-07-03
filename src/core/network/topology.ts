@@ -11,24 +11,30 @@ export class NetworkTopologyError extends Error {
 
 export type ArmRole = "low" | "high" | "floating";
 
+// All resistances are in kΩ and all currents are in mA throughout this class
+// (kΩ × mA = V, so voltage formulas need no unit conversion).
 interface Arm {
   readonly resistor: Resistor;
+  // Sits between the pullup/pulldown rail and the measurement resistor —
+  // only carries current while this arm is actively driven high or low.
+  pullResistance: number;
+  // Sits right before the voltage measurement tap, between the pull
+  // resistor and the arm's own resistance. Present for every arm, but only
+  // matters electrically while driven, for the same reason as pullResistance.
+  measurementResistance: number;
   role: ArmRole;
   voltage: number;
 }
 
 export default class NetworkTopology {
   private readonly arms: Arm[] = [
-    { resistor: new Resistor(100), role: "high", voltage: 0 },
-    { resistor: new Resistor(200), role: "floating", voltage: 0 },
-    { resistor: new Resistor(300), role: "low", voltage: 0 },
+    { resistor: new Resistor(100), pullResistance: 1, measurementResistance: 1, role: "high", voltage: 0 },
+    { resistor: new Resistor(200), pullResistance: 1, measurementResistance: 1, role: "floating", voltage: 0 },
+    { resistor: new Resistor(300), pullResistance: 1, measurementResistance: 1, role: "low", voltage: 0 },
   ];
 
   private lowVoltage = 0;
   private highVoltage = 3.3;
-
-  // A resistor in series between each driven rail and its arm.
-  private protectionResistance = 0;
 
   private readonly voltageChangeEmitter = new Emitter<void>();
   readonly onVoltageChange: Event<void> = this.voltageChangeEmitter.event;
@@ -68,6 +74,24 @@ export default class NetworkTopology {
     this.getArm(index).resistor.setResistance(value);
   }
 
+  getArmPullResistance(index: number): number {
+    return this.getArm(index).pullResistance;
+  }
+
+  setArmPullResistance(index: number, value: number): void {
+    this.getArm(index).pullResistance = value;
+    this.recalculateVoltages();
+  }
+
+  getArmMeasurementResistance(index: number): number {
+    return this.getArm(index).measurementResistance;
+  }
+
+  setArmMeasurementResistance(index: number, value: number): void {
+    this.getArm(index).measurementResistance = value;
+    this.recalculateVoltages();
+  }
+
   getLowVoltage(): number {
     return this.lowVoltage;
   }
@@ -83,15 +107,6 @@ export default class NetworkTopology {
 
   setHighVoltage(value: number): void {
     this.highVoltage = value;
-    this.recalculateVoltages();
-  }
-
-  getProtectionResistance(): number {
-    return this.protectionResistance;
-  }
-
-  setProtectionResistance(value: number): void {
-    this.protectionResistance = value;
     this.recalculateVoltages();
   }
 
@@ -113,9 +128,11 @@ export default class NetworkTopology {
         continue;
       }
 
-      // The protection resistor sits in series with the arm on the path to
-      // the star point, so it lowers that path's conductance the same way.
-      const conductance = 1 / (this.protectionResistance + arm.resistor.getResistance());
+      // The pull and measurement resistors sit in series with the arm on the
+      // path to the star point, so together they lower that path's
+      // conductance the same way the arm's own resistance does.
+      const seriesResistance = arm.pullResistance + arm.measurementResistance + arm.resistor.getResistance();
+      const conductance = 1 / seriesResistance;
       const drivenVoltage = arm.role === "high" ? this.highVoltage : this.lowVoltage;
 
       conductanceSum += conductance;
@@ -137,15 +154,15 @@ export default class NetworkTopology {
 
       const railVoltage = arm.role === "high" ? this.highVoltage : this.lowVoltage;
       const armResistance = arm.resistor.getResistance();
+      const protectionResistance = arm.pullResistance + arm.measurementResistance;
 
       // The current flowing from this arm's rail to the star point causes a
-      // voltage drop across the protection resistor, so the tap itself reads
-      // slightly off the rail voltage. With no protection resistor (the
-      // default), this reduces to exactly the rail voltage. An infinite
-      // arm resistance carries no current no matter what the star-point
-      // voltage is (even if it's NaN, e.g. every driven arm is infinite).
-      const current = Number.isFinite(armResistance) ? (railVoltage - starPointVoltage) / (this.protectionResistance + armResistance) : 0;
-      arm.voltage = railVoltage - current * this.protectionResistance;
+      // voltage drop across the pull and measurement resistors, so the tap
+      // itself reads slightly off the rail voltage. An infinite arm
+      // resistance carries no current no matter what the star-point voltage
+      // is (even if it's NaN, e.g. every driven arm is infinite).
+      const current = Number.isFinite(armResistance) ? (railVoltage - starPointVoltage) / (protectionResistance + armResistance) : 0;
+      arm.voltage = railVoltage - current * protectionResistance;
     }
 
     this.voltageChangeEmitter.fire();

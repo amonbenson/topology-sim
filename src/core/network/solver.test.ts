@@ -45,6 +45,22 @@ describe("NetworkSolver", () => {
     expect(result.totalResistance).toBeCloseTo(79);
   });
 
+  it("resolves correctly even when each arm's pull and measurement resistances differ", async () => {
+    const topology = buildTopology([10, 22, 47]);
+    topology.setArmPullResistance(0, 2);
+    topology.setArmMeasurementResistance(0, 3);
+    topology.setArmPullResistance(2, 4);
+    topology.setArmMeasurementResistance(2, 0.5);
+    const solver = new NetworkSolver(topology);
+
+    const result = await solver.solve();
+
+    expect(result.arms[0]).toBeCloseTo(10 / 79);
+    expect(result.arms[1]).toBeCloseTo(22 / 79);
+    expect(result.arms[2]).toBeCloseTo(47 / 79);
+    expect(result.totalResistance).toBeCloseTo(79);
+  });
+
   it("resolves a generic three-finite-arm topology into normalized ratios and the total resistance", async () => {
     const armResistances = [10, 22, 47] as const;
     const solver = new NetworkSolver(buildTopology(armResistances));
