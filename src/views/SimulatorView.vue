@@ -96,6 +96,28 @@ const roleOptions: { label: string; value: ArmRole }[] = [
           />
         </div>
       </div>
+
+      <div class="flex flex-col gap-2">
+        <label :for="`pull-resistance-${arm.index}`">Pull Resistance (k&#x3A9;)</label>
+        <InputNumber
+          :id="`pull-resistance-${arm.index}`"
+          v-model="arm.pullResistance"
+          mode="decimal"
+          :min-fraction-digits="0"
+          :max-fraction-digits="4"
+        />
+      </div>
+
+      <div class="flex flex-col gap-2">
+        <label :for="`measurement-resistance-${arm.index}`">Measurement Resistance (k&#x3A9;)</label>
+        <InputNumber
+          :id="`measurement-resistance-${arm.index}`"
+          v-model="arm.measurementResistance"
+          mode="decimal"
+          :min-fraction-digits="0"
+          :max-fraction-digits="4"
+        />
+      </div>
     </div>
   </div>
 </template>

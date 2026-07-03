@@ -5,30 +5,30 @@ const GRID = 16;
 const STROKE = 2;
 const JUNCTION_RADIUS = STROKE * 2;
 
-const SPACING = 4 * GRID;
-const DELTA_X = 7 * GRID;
-const DELTA_Y = 6 * GRID;
+const SPACING = GRID * 4;
+const DELTA_X = GRID * 7;
+const DELTA_Y = GRID * 6;
 
 const DELTA_CENTER_X = SPACING + DELTA_X;
-const DELTA_CENTER_Y = SPACING + DELTA_X;
+const DELTA_CENTER_Y = SPACING * 2 + DELTA_X;
 const DELTA_ARMS = [
   {
     tapX: SPACING + DELTA_X,
-    tapY: SPACING,
+    tapY: SPACING * 2,
     labelAlign: "start",
     labelOffsetX: 16,
     labelOffsetY: 0,
   },
   {
     tapX: SPACING + DELTA_X + DELTA_X,
-    tapY: SPACING + DELTA_X + DELTA_Y,
+    tapY: SPACING * 2 + DELTA_X + DELTA_Y,
     labelAlign: "start",
     labelOffsetX: 12,
     labelOffsetY: -16,
   },
   {
     tapX: SPACING,
-    tapY: SPACING + DELTA_X + DELTA_Y,
+    tapY: SPACING * 2 + DELTA_X + DELTA_Y,
     labelAlign: "end",
     labelOffsetX: -12,
     labelOffsetY: -16,
@@ -46,7 +46,7 @@ const GND_X = TAP_WIRE_EX - SPACING * 2;
 const VCC_X = TAP_WIRE_EX - SPACING * 3;
 
 const WIDTH = SPACING + DELTA_X * 2 + SPACING * 6;
-const HEIGHT = SPACING + DELTA_X + DELTA_Y + SPACING * 3;
+const HEIGHT = SPACING + DELTA_X + DELTA_Y + SPACING * 5;
 
 defineProps<{
   arms: ResistorArm[];
@@ -177,6 +177,27 @@ function formatVoltage(value: number): string {
       >
         {{ formatVoltage(arms[i].voltage) }} V
       </text>
+
+      <!-- Measurement resistor body -->
+      <line
+        v-if="arms[i].resistance > 0 && arms[i].resistance < Infinity"
+        :x1="TAP_WIRE_EX - SPACING * 1.25"
+        :y1="tapY"
+        :x2="TAP_WIRE_EX - SPACING * 0.75"
+        :y2="tapY"
+        stroke-width="20"
+      />
+      <text
+        :x="TAP_WIRE_EX - SPACING"
+        :y="tapY - 20"
+        dominant-baseline="middle"
+        text-anchor="middle"
+        font-size="16"
+        stroke="none"
+        fill="currentColor"
+      >
+        RM: {{ formatResistance(arms[i].measurementResistance) }} k&#x3A9;
+      </text>
     </template>
 
     <!-- Tap crossbars -->
@@ -207,6 +228,26 @@ function formatVoltage(value: number): string {
           :y2="SPACING / 2"
           stroke="#f40"
         />
+
+        <line
+          :x1="VCC_X"
+          :y1="SPACING * 1"
+          :x2="VCC_X"
+          :y2="SPACING * 1.5"
+          stroke="#f40"
+          stroke-width="20"
+        />
+        <text
+          :x="VCC_X + 20"
+          :y="SPACING * 1.25"
+          dominant-baseline="middle"
+          text-anchor="left"
+          font-size="16"
+          stroke="none"
+          fill="#f40"
+        >
+          RP: {{ formatResistance(arm.pullResistance) }} k&#x3A9;
+        </text>
       </template>
 
       <!-- GND -->
@@ -232,6 +273,26 @@ function formatVoltage(value: number): string {
           :y2="HEIGHT - SPACING / 2"
           stroke="#04f"
         />
+
+        <line
+          :x1="GND_X"
+          :y1="HEIGHT - SPACING * 1"
+          :x2="GND_X"
+          :y2="HEIGHT - SPACING * 1.5"
+          stroke="#04f"
+          stroke-width="20"
+        />
+        <text
+          :x="GND_X + 20"
+          :y="HEIGHT - SPACING * 1.25"
+          dominant-baseline="middle"
+          text-anchor="left"
+          font-size="16"
+          stroke="none"
+          fill="#04f"
+        >
+          RP: {{ formatResistance(arm.pullResistance) }} k&#x3A9;
+        </text>
       </template>
     </template>
   </svg>

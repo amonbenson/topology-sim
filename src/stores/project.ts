@@ -15,6 +15,8 @@ export interface ResistorArm {
   readonly index: number;
   readonly role: ArmRole;
   readonly resistance: number;
+  readonly pullResistance: number;
+  readonly measurementResistance: number;
   readonly voltage: number;
 }
 
@@ -32,6 +34,16 @@ export const useProjectStore = defineStore("project", () => {
     resistance: useProperty(
       () => topology.getArmResistance(index),
       (value: number) => topology.setArmResistance(index, value),
+      topology.onVoltageChange,
+    ),
+    pullResistance: useProperty(
+      () => topology.getArmPullResistance(index),
+      (value: number) => topology.setArmPullResistance(index, value),
+      topology.onVoltageChange,
+    ),
+    measurementResistance: useProperty(
+      () => topology.getArmMeasurementResistance(index),
+      (value: number) => topology.setArmMeasurementResistance(index, value),
       topology.onVoltageChange,
     ),
     voltage: useProperty(
