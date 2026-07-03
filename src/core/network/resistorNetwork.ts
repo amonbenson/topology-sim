@@ -9,109 +9,121 @@ export class ResistorNetworkError extends Error {
   }
 }
 
-export class InvalidTapConfigurationError extends ResistorNetworkError {
-  constructor(lowTapIndex: number, highTapIndex: number) {
-    super(`Invalid tap configuration: low=${lowTapIndex}, high=${highTapIndex}`);
-    this.name = "InvalidTapConfigurationError";
-  }
+export type ArmRole = "low" | "high" | "floating";
+
+interface Arm {
+  readonly resistor: Resistor;
+  role: ArmRole;
+  voltage: number;
 }
 
 export default class ResistorNetwork {
-  public readonly resistors = [
-    new Resistor(100),
-    new Resistor(200),
-    new Resistor(300),
+  private readonly arms: Arm[] = [
+    { resistor: new Resistor(100), role: "high", voltage: 0 },
+    { resistor: new Resistor(200), role: "floating", voltage: 0 },
+    { resistor: new Resistor(300), role: "low", voltage: 0 },
   ];
-
-  private lowTapIndex = 2;
-  private highTapIndex = 0;
-  private outputTapIndex = 1;
 
   private lowVoltage = 0;
   private highVoltage = 3.3;
-  private outputVoltage = 0;
 
-  private readonly configurationChangeEmitter = new Emitter<void>();
-  readonly onConfigurationChange: Event<void> = this.configurationChangeEmitter.event;
+  private readonly voltageChangeEmitter = new Emitter<void>();
+  readonly onVoltageChange: Event<void> = this.voltageChangeEmitter.event;
 
   constructor() {
-    for (const resistor of this.resistors) {
-      resistor.onResistanceChange(() => {
-        this.recalculateOutputVoltage();
-        this.configurationChangeEmitter.fire();
+    for (const arm of this.arms) {
+      arm.resistor.onResistanceChange(() => {
+        this.recalculateVoltages();
       });
     }
 
-    this.recalculateOutputVoltage();
+    this.recalculateVoltages();
   }
 
-  getLowTapIndex(): number {
-    return this.lowTapIndex;
+  get armCount(): number {
+    return this.arms.length;
   }
 
-  getHighTapIndex(): number {
-    return this.highTapIndex;
+  getArmRole(index: number): ArmRole {
+    return this.getArm(index).role;
   }
 
-  getOutputTapIndex(): number {
-    return this.outputTapIndex;
+  setArmRole(index: number, role: ArmRole): void {
+    this.getArm(index).role = role;
+    this.recalculateVoltages();
   }
 
-  getVoltageAt(tapIndex: number): number {
-    if (tapIndex === this.lowTapIndex) {
-      return this.lowVoltage;
-    }
+  getArmVoltage(index: number): number {
+    return this.getArm(index).voltage;
+  }
 
-    if (tapIndex === this.highTapIndex) {
-      return this.highVoltage;
-    }
+  getArmResistance(index: number): number {
+    return this.getArm(index).resistor.getResistance();
+  }
 
-    if (tapIndex === this.outputTapIndex) {
-      return this.outputVoltage;
-    }
+  setArmResistance(index: number, value: number): void {
+    this.getArm(index).resistor.setResistance(value);
+  }
 
-    throw new ResistorNetworkError(`No tap exists at index: ${tapIndex}`);
+  getLowVoltage(): number {
+    return this.lowVoltage;
   }
 
   setLowVoltage(value: number): void {
     this.lowVoltage = value;
-    this.recalculateOutputVoltage();
-    this.configurationChangeEmitter.fire();
+    this.recalculateVoltages();
+  }
+
+  getHighVoltage(): number {
+    return this.highVoltage;
   }
 
   setHighVoltage(value: number): void {
     this.highVoltage = value;
-    this.recalculateOutputVoltage();
-    this.configurationChangeEmitter.fire();
+    this.recalculateVoltages();
   }
 
-  setTapConfiguration(lowTapIndex: number, highTapIndex: number): void {
-    if (lowTapIndex < 0 || lowTapIndex >= this.resistors.length) {
-      throw new InvalidTapConfigurationError(lowTapIndex, highTapIndex);
+  private getArm(index: number): Arm {
+    const arm = this.arms[index];
+    if (!arm) {
+      throw new ResistorNetworkError(`No arm exists at index: ${index}`);
     }
 
-    if (highTapIndex < 0 || highTapIndex >= this.resistors.length) {
-      throw new InvalidTapConfigurationError(lowTapIndex, highTapIndex);
-    }
-
-    if (lowTapIndex === highTapIndex) {
-      throw new InvalidTapConfigurationError(lowTapIndex, highTapIndex);
-    }
-
-    this.lowTapIndex = lowTapIndex;
-    this.highTapIndex = highTapIndex;
-    this.outputTapIndex = 3 - lowTapIndex - highTapIndex;
-
-    this.recalculateOutputVoltage();
-    this.configurationChangeEmitter.fire();
+    return arm;
   }
 
-  private recalculateOutputVoltage(): void {
-    const lowResistance = this.resistors[this.lowTapIndex].getResistance();
-    const highResistance = this.resistors[this.highTapIndex].getResistance();
+  private recalculateVoltages(): void {
+    let conductanceSum = 0;
+    let weightedVoltageSum = 0;
 
-    // As the output tap is floating, we can assume the star point center voltage to be the same as the output voltage.
-    // This reduces the calculation to a simple voltage divider between the low and high tap resistors.
-    this.outputVoltage = (this.highVoltage * lowResistance + this.lowVoltage * highResistance) / (lowResistance + highResistance);
+    for (const arm of this.arms) {
+      if (arm.role === "floating") {
+        continue;
+      }
+
+      const conductance = 1 / arm.resistor.getResistance();
+      const drivenVoltage = arm.role === "high" ? this.highVoltage : this.lowVoltage;
+
+      conductanceSum += conductance;
+      weightedVoltageSum += drivenVoltage * conductance;
+    }
+
+    // Floating arms carry no current, so their tap settles at the star-point
+    // voltage formed by the voltage divider of whichever arms are actively driven.
+    // If no arm is driving the network (e.g. all arms are floating), that
+    // voltage is undefined.
+    const starPointVoltage = conductanceSum === 0 ? NaN : weightedVoltageSum / conductanceSum;
+
+    for (const arm of this.arms) {
+      if (arm.role === "low") {
+        arm.voltage = this.lowVoltage;
+      } else if (arm.role === "high") {
+        arm.voltage = this.highVoltage;
+      } else {
+        arm.voltage = starPointVoltage;
+      }
+    }
+
+    this.voltageChangeEmitter.fire();
   }
 }

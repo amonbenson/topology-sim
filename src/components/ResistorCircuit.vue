@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ResistorTap } from "@/stores/project";
+import type { ResistorArm } from "@/stores/project";
 
 const GRID = 16;
 const STROKE = 2;
@@ -49,8 +49,16 @@ const WIDTH = SPACING + DELTA_X * 2 + SPACING * 6;
 const HEIGHT = SPACING + DELTA_X + DELTA_Y + SPACING * 3;
 
 defineProps<{
-  taps: ResistorTap[];
+  arms: ResistorArm[];
 }>();
+
+function formatResistance(value: number): string {
+  return Number.isFinite(value) ? `${Math.round(value)}` : "∞";
+}
+
+function formatVoltage(value: number): string {
+  return Number.isNaN(value) ? "???" : `${value.toFixed(2)}`;
+}
 </script>
 
 <template>
@@ -97,7 +105,7 @@ defineProps<{
         stroke="none"
         fill="currentColor"
       >
-        R{{ i + 1 }}: {{ Math.round(taps[i].resistance) }} &#x3A9;
+        R{{ i + 1 }}: {{ formatResistance(arms[i].resistance) }} &#x3A9;
       </text>
 
       <!-- Tap junction -->
@@ -165,17 +173,17 @@ defineProps<{
         stroke="none"
         fill="currentColor"
       >
-        {{ taps[i].voltage.toFixed(2) }} V
+        {{ formatVoltage(arms[i].voltage) }} V
       </text>
     </template>
 
     <!-- Tap crossbars -->
     <template
-      v-for="(tap, i) in taps"
+      v-for="(arm, i) in arms"
       :key="i"
     >
       <!-- VCC -->
-      <template v-if="tap.role === 'high'">
+      <template v-if="arm.role === 'high'">
         <line
           :x1="VCC_X"
           :y1="SPACING / 2"
@@ -200,7 +208,7 @@ defineProps<{
       </template>
 
       <!-- GND -->
-      <template v-if="tap.role === 'low'">
+      <template v-if="arm.role === 'low'">
         <line
           :x1="GND_X"
           :y1="HEIGHT - SPACING / 2"
