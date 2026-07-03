@@ -80,6 +80,7 @@ function formatVoltage(value: number): string {
     >
       <!-- Resistor Wire -->
       <line
+        v-if="arms[i].resistance < Infinity"
         :x1="DELTA_CENTER_X"
         :y1="DELTA_CENTER_Y"
         :x2="tapX"
@@ -88,6 +89,7 @@ function formatVoltage(value: number): string {
 
       <!-- Resistor Body -->
       <line
+        v-if="arms[i].resistance > 0 && arms[i].resistance < Infinity"
         :x1="DELTA_CENTER_X + (tapX - DELTA_CENTER_X) * 0.33"
         :y1="DELTA_CENTER_Y + (tapY - DELTA_CENTER_Y) * 0.33"
         :x2="DELTA_CENTER_X + (tapX - DELTA_CENTER_X) * 0.66"
