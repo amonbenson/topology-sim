@@ -25,6 +25,12 @@ function runDetection(): void {
   </div>
 
   <div class="mx-auto flex max-w-md flex-col gap-6 p-6">
+    <Button
+      label="Run Detection"
+      @click="runDetection"
+    />
+
+    <!-- Supply Voltage -->
     <div
       class="flex flex-col gap-3 rounded-lg border border-surface-alt p-4"
     >
@@ -51,13 +57,14 @@ function runDetection(): void {
       </div>
     </div>
 
+    <!-- Taps (Roles and Resistances) -->
     <div
       v-for="arm in store.arms"
       :key="arm.index"
       class="flex flex-col gap-3 rounded-lg border border-surface-alt p-4"
     >
       <div class="flex items-center justify-between">
-        <span class="font-medium">R{{ arm.index + 1 }}</span>
+        <span class="font-medium">Tap {{ arm.index + 1 }}</span>
         <SelectButton
           v-model="arm.role"
           :options="roleOptions"
@@ -87,10 +94,5 @@ function runDetection(): void {
         </div>
       </div>
     </div>
-
-    <Button
-      label="Run Detection"
-      @click="runDetection"
-    />
   </div>
 </template>
