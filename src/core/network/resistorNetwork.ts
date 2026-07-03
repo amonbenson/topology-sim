@@ -27,6 +27,13 @@ export default class ResistorNetwork {
   private lowVoltage = 0;
   private highVoltage = 3.3;
 
+  // A resistor in series between each driven rail and its arm. Defaults to 0
+  // (rail voltage applied directly to the tap, as if there were no protection
+  // resistor at all). A nonzero value lets current flowing through a driven
+  // arm be sensed as a voltage drop at that arm's own tap, which is what
+  // makes the arm's resistance observable from its tap voltage alone.
+  private protectionResistance = 0;
+
   private readonly voltageChangeEmitter = new Emitter<void>();
   readonly onVoltageChange: Event<void> = this.voltageChangeEmitter.event;
 
@@ -83,6 +90,15 @@ export default class ResistorNetwork {
     this.recalculateVoltages();
   }
 
+  getProtectionResistance(): number {
+    return this.protectionResistance;
+  }
+
+  setProtectionResistance(value: number): void {
+    this.protectionResistance = value;
+    this.recalculateVoltages();
+  }
+
   private getArm(index: number): Arm {
     const arm = this.arms[index];
     if (!arm) {
@@ -101,7 +117,9 @@ export default class ResistorNetwork {
         continue;
       }
 
-      const conductance = 1 / arm.resistor.getResistance();
+      // The protection resistor sits in series with the arm on the path to
+      // the star point, so it lowers that path's conductance the same way.
+      const conductance = 1 / (this.protectionResistance + arm.resistor.getResistance());
       const drivenVoltage = arm.role === "high" ? this.highVoltage : this.lowVoltage;
 
       conductanceSum += conductance;
@@ -115,15 +133,24 @@ export default class ResistorNetwork {
     const starPointVoltage = conductanceSum === 0 ? NaN : weightedVoltageSum / conductanceSum;
 
     for (const arm of this.arms) {
-      if (arm.role === "low") {
-        arm.voltage = this.lowVoltage;
-      } else if (arm.role === "high") {
-        arm.voltage = this.highVoltage;
-      } else {
+      if (arm.role === "floating") {
         // A floating arm only settles at the star-point voltage if it has a
         // conductive path to it; an infinite-resistance arm is fully isolated.
         arm.voltage = Number.isFinite(arm.resistor.getResistance()) ? starPointVoltage : NaN;
+        continue;
       }
+
+      const railVoltage = arm.role === "high" ? this.highVoltage : this.lowVoltage;
+      const armResistance = arm.resistor.getResistance();
+
+      // The current flowing from this arm's rail to the star point causes a
+      // voltage drop across the protection resistor, so the tap itself reads
+      // slightly off the rail voltage. With no protection resistor (the
+      // default), this reduces to exactly the rail voltage. An infinite
+      // arm resistance carries no current no matter what the star-point
+      // voltage is (even if it's NaN, e.g. every driven arm is infinite).
+      const current = Number.isFinite(armResistance) ? (railVoltage - starPointVoltage) / (this.protectionResistance + armResistance) : 0;
+      arm.voltage = railVoltage - current * this.protectionResistance;
     }
 
     this.voltageChangeEmitter.fire();
