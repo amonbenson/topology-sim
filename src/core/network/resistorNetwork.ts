@@ -23,9 +23,9 @@ export default class ResistorNetwork {
     new Resistor(300),
   ];
 
-  private lowTapIndex = 0;
-  private highTapIndex = 1;
-  private outputTapIndex = 2;
+  private lowTapIndex = 2;
+  private highTapIndex = 0;
+  private outputTapIndex = 1;
 
   private lowVoltage = 0;
   private highVoltage = 3.3;

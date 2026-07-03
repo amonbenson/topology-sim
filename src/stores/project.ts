@@ -1,16 +1,18 @@
 import { defineStore } from "pinia";
-import type { WritableComputedRef } from "vue";
 
 import { useProperty } from "@/composables/useProperty";
 import ResistorNetwork from "@/core/network/resistorNetwork";
 
 export type TapRole = "low" | "high" | "output";
 
+// The shape a tap actually has once Pinia unwraps the underlying
+// WritableComputedRefs — this is what templates and props see, not the
+// store's own internal representation.
 export interface ResistorTap {
   readonly index: number;
-  readonly role: WritableComputedRef<TapRole>;
-  readonly resistance: WritableComputedRef<number>;
-  readonly voltage: WritableComputedRef<number>;
+  readonly role: TapRole;
+  readonly resistance: number;
+  readonly voltage: number;
 }
 
 export const useProjectStore = defineStore("project", () => {
@@ -58,7 +60,7 @@ export const useProjectStore = defineStore("project", () => {
     }
   }
 
-  const taps: ResistorTap[] = resistorNetwork.resistors.map((resistor, index) => ({
+  const taps = resistorNetwork.resistors.map((resistor, index) => ({
     index,
     role: useProperty(
       () => tapRole(index),
