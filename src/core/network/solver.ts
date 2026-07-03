@@ -1,4 +1,6 @@
-import ResistorNetwork from "./resistorNetwork";
+import { Emitter, type Event } from "@/utils/events";
+
+import NetworkTopology from "./topology";
 
 export class NetworkSolverError extends Error {
   constructor(message: string) {
@@ -31,6 +33,10 @@ export interface NetworkSolverOptions {
   readonly supplyConsistencyThreshold?: number;
   readonly consistencyRelativeThreshold?: number;
   readonly ratioDivisionEpsilon?: number;
+  // How long to pause after each measurement step, so a caller can visually
+  // step through the process. Defaults to 0 (no real delay), which keeps
+  // solve() effectively synchronous for unit tests.
+  readonly stepDelayMs?: number;
 }
 
 // Identifies the three arm resistances of a star-connected resistor network
@@ -38,7 +44,7 @@ export interface NetworkSolverOptions {
 // reading tap voltages only (never the network's own rail setpoints) — the
 // same measurement protocol a real three-terminal detector circuit would use.
 export default class NetworkSolver {
-  private readonly network: ResistorNetwork;
+  private readonly network: NetworkTopology;
   private readonly supplyVoltage: number;
   private readonly protectionResistance: number;
   private readonly openVoltageThreshold: number;
@@ -46,8 +52,13 @@ export default class NetworkSolver {
   private readonly supplyConsistencyThreshold: number;
   private readonly consistencyRelativeThreshold: number;
   private readonly ratioDivisionEpsilon: number;
+  private readonly stepDelayMs: number;
 
-  constructor(network: ResistorNetwork, options: NetworkSolverOptions = {}) {
+  private status = "";
+  private readonly statusChangeEmitter = new Emitter<string>();
+  readonly onStatusChange: Event<string> = this.statusChangeEmitter.event;
+
+  constructor(network: NetworkTopology, options: NetworkSolverOptions = {}) {
     if (network.armCount !== 3) {
       throw new NetworkSolverError(
         `NetworkSolver requires a three-arm network, got ${network.armCount} arms`,
@@ -62,39 +73,46 @@ export default class NetworkSolver {
     this.supplyConsistencyThreshold = options.supplyConsistencyThreshold ?? 1e-9;
     this.consistencyRelativeThreshold = options.consistencyRelativeThreshold ?? 1e-6;
     this.ratioDivisionEpsilon = options.ratioDivisionEpsilon ?? 1e-12;
+    this.stepDelayMs = options.stepDelayMs ?? 0;
   }
 
-  solve(): NetworkSolution {
+  getStatus(): string {
+    return this.status;
+  }
+
+  async solve(): Promise<NetworkSolution> {
+    this.reportStatus("Starting detection…");
+
     this.network.setLowVoltage(0);
     this.network.setHighVoltage(this.supplyVoltage);
     this.network.setProtectionResistance(this.protectionResistance);
 
-    const measurementAB = this.measurePair(0, 1); // A high, B low: ratio = rB / (rA + rB)
-    const measurementBC = this.measurePair(1, 2); // B high, C low: ratio = rC / (rB + rC)
+    const measurementAB = await this.measurePair(0, 1); // A high, B low: ratio = rB / (rA + rB)
+    const measurementBC = await this.measurePair(1, 2); // B high, C low: ratio = rC / (rB + rC)
 
+    let result: NetworkSolution;
     if (measurementAB.conducts && measurementBC.conducts) {
-      return this.resolveFromTwoPairs(measurementAB, measurementBC);
-    }
-
-    if (measurementAB.conducts) {
+      result = this.resolveFromTwoPairs(measurementAB, measurementBC);
+    } else if (measurementAB.conducts) {
       // rC is infinite: C is isolated.
-      return this.resolveFromSinglePair(measurementAB, [0, 0, Infinity], [NaN, NaN, Infinity]);
-    }
-
-    if (measurementBC.conducts) {
+      result = this.resolveFromSinglePair(measurementAB, [0, 0, Infinity], [NaN, NaN, Infinity]);
+    } else if (measurementBC.conducts) {
       // rA is infinite: A is isolated.
-      return this.resolveFromSinglePair(measurementBC, [Infinity, 0, 0], [Infinity, NaN, NaN]);
+      result = this.resolveFromSinglePair(measurementBC, [Infinity, 0, 0], [Infinity, NaN, NaN]);
+    } else {
+      // Neither pair conducted, so the isolated arm must be B — confirm with
+      // the one measurement that hasn't been taken yet.
+      const measurementCA = await this.measurePair(2, 0); // C high, A low: ratio = rA / (rC + rA)
+      result = measurementCA.conducts
+        // rB is infinite: B is isolated.
+        ? this.resolveFromSinglePair(measurementCA, [0, Infinity, 0], [NaN, Infinity, NaN])
+        : { arms: [Infinity, Infinity, Infinity], totalResistance: NaN };
     }
 
-    // Neither pair conducted, so the isolated arm must be B — confirm with the
-    // one measurement that hasn't been taken yet.
-    const measurementCA = this.measurePair(2, 0); // C high, A low: ratio = rA / (rC + rA)
-    if (measurementCA.conducts) {
-      // rB is infinite: B is isolated.
-      return this.resolveFromSinglePair(measurementCA, [0, Infinity, 0], [NaN, Infinity, NaN]);
-    }
+    this.reportStatus(this.describeResult(result));
+    await this.delay();
 
-    return { arms: [Infinity, Infinity, Infinity], totalResistance: NaN };
+    return result;
   }
 
   private resolveFromTwoPairs(measurementAB: PairMeasurement, measurementBC: PairMeasurement): NetworkSolution {
@@ -150,12 +168,18 @@ export default class NetworkSolver {
     return { arms: unresolvedArms, totalResistance: measurement.pairResistance };
   }
 
-  private measurePair(highIndex: number, lowIndex: number): PairMeasurement {
+  private async measurePair(highIndex: number, lowIndex: number): Promise<PairMeasurement> {
     const floatingIndex = 3 - highIndex - lowIndex;
+
+    this.reportStatus(
+      `Driving Tap ${highIndex + 1} high, Tap ${lowIndex + 1} low, Tap ${floatingIndex + 1} floating…`,
+    );
 
     this.network.setArmRole(highIndex, "high");
     this.network.setArmRole(lowIndex, "low");
     this.network.setArmRole(floatingIndex, "floating");
+
+    await this.delay();
 
     const highVoltage = this.network.getArmVoltage(highIndex);
     const lowVoltage = this.network.getArmVoltage(lowIndex);
@@ -181,5 +205,40 @@ export default class NetworkSolver {
       : NaN;
 
     return { conducts: true, pairResistance, lowResistanceFraction };
+  }
+
+  private describeResult(result: NetworkSolution): string {
+    const armDescriptions = result.arms.map((value, index) => {
+      const label = `Tap ${index + 1}`;
+
+      if (Number.isNaN(value)) {
+        return `${label}: unresolved`;
+      }
+
+      if (value === Infinity) {
+        return `${label}: open`;
+      }
+
+      if (value === 0) {
+        return `${label}: shorted`;
+      }
+
+      return `${label}: ${(value * result.totalResistance).toFixed(1)} Ω`;
+    });
+
+    return `Solved — ${armDescriptions.join(", ")}`;
+  }
+
+  private reportStatus(status: string): void {
+    this.status = status;
+    this.statusChangeEmitter.fire(status);
+  }
+
+  private async delay(): Promise<void> {
+    if (this.stepDelayMs <= 0) {
+      return;
+    }
+
+    await new Promise<void>(resolve => setTimeout(resolve, this.stepDelayMs));
   }
 }

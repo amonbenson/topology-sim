@@ -1,7 +1,10 @@
 import { defineStore } from "pinia";
+import { ref } from "vue";
 
+import { useEvent } from "@/composables/useEvent";
 import { useProperty } from "@/composables/useProperty";
-import ResistorNetwork, { type ArmRole } from "@/core/network/resistorNetwork";
+import NetworkSolver from "@/core/network/solver";
+import NetworkTopology, { type ArmRole } from "@/core/network/topology";
 
 export type { ArmRole };
 
@@ -16,43 +19,63 @@ export interface ResistorArm {
 }
 
 export const useProjectStore = defineStore("project", () => {
-  const resistorNetwork = new ResistorNetwork();
+  const networkTopology = new NetworkTopology();
+  const networkSolver = new NetworkSolver(networkTopology, { stepDelayMs: 600 });
 
-  const arms = Array.from({ length: resistorNetwork.armCount }, (_, index) => ({
+  const arms = Array.from({ length: networkTopology.armCount }, (_, index) => ({
     index,
     role: useProperty(
-      () => resistorNetwork.getArmRole(index),
-      (role: ArmRole) => resistorNetwork.setArmRole(index, role),
-      resistorNetwork.onVoltageChange,
+      () => networkTopology.getArmRole(index),
+      (role: ArmRole) => networkTopology.setArmRole(index, role),
+      networkTopology.onVoltageChange,
     ),
     resistance: useProperty(
-      () => resistorNetwork.getArmResistance(index),
-      (value: number) => resistorNetwork.setArmResistance(index, value),
-      resistorNetwork.onVoltageChange,
+      () => networkTopology.getArmResistance(index),
+      (value: number) => networkTopology.setArmResistance(index, value),
+      networkTopology.onVoltageChange,
     ),
     voltage: useProperty(
-      () => resistorNetwork.getArmVoltage(index),
+      () => networkTopology.getArmVoltage(index),
       (_) => {},
-      resistorNetwork.onVoltageChange,
+      networkTopology.onVoltageChange,
     ),
   }));
 
   const lowVoltage = useProperty(
-    () => resistorNetwork.getLowVoltage(),
-    (value: number) => resistorNetwork.setLowVoltage(value),
-    resistorNetwork.onVoltageChange,
+    () => networkTopology.getLowVoltage(),
+    (value: number) => networkTopology.setLowVoltage(value),
+    networkTopology.onVoltageChange,
   );
 
   const highVoltage = useProperty(
-    () => resistorNetwork.getHighVoltage(),
-    (value: number) => resistorNetwork.setHighVoltage(value),
-    resistorNetwork.onVoltageChange,
+    () => networkTopology.getHighVoltage(),
+    (value: number) => networkTopology.setHighVoltage(value),
+    networkTopology.onVoltageChange,
   );
 
+  const solverStatus = useEvent(networkSolver.onStatusChange, () => networkSolver.getStatus());
+  const isSolving = ref(false);
+
+  async function runDetection(): Promise<void> {
+    if (isSolving.value) {
+      return;
+    }
+
+    isSolving.value = true;
+    try {
+      await networkSolver.solve();
+    } finally {
+      isSolving.value = false;
+    }
+  }
+
   return {
-    resistorNetwork,
+    networkTopology,
     arms,
     lowVoltage,
     highVoltage,
+    solverStatus,
+    isSolving,
+    runDetection,
   };
 });

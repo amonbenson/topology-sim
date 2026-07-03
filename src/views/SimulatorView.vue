@@ -13,10 +13,6 @@ const roleOptions: { label: string; value: ArmRole }[] = [
   { label: "High", value: "high" },
   { label: "Floating", value: "floating" },
 ];
-
-function runDetection(): void {
-  // TODO: kick off the topology detection simulation
-}
 </script>
 
 <template>
@@ -27,8 +23,15 @@ function runDetection(): void {
   <div class="mx-auto flex max-w-md flex-col gap-6 p-6">
     <Button
       label="Run Detection"
-      @click="runDetection"
+      :disabled="store.isSolving"
+      @click="store.runDetection"
     />
+    <p
+      v-if="store.isSolving || store.solverStatus"
+      class="text-center text-sm text-surface-alt"
+    >
+      {{ store.solverStatus }}
+    </p>
 
     <!-- Supply Voltage -->
     <div

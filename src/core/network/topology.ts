@@ -2,10 +2,10 @@ import { Emitter, type Event } from "@/utils/events";
 
 import Resistor from "./resistor";
 
-export class ResistorNetworkError extends Error {
+export class NetworkTopologyError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = "ResistorNetworkError";
+    this.name = "NetworkTopologyError";
   }
 }
 
@@ -17,7 +17,7 @@ interface Arm {
   voltage: number;
 }
 
-export default class ResistorNetwork {
+export default class NetworkTopology {
   private readonly arms: Arm[] = [
     { resistor: new Resistor(100), role: "high", voltage: 0 },
     { resistor: new Resistor(200), role: "floating", voltage: 0 },
@@ -102,7 +102,7 @@ export default class ResistorNetwork {
   private getArm(index: number): Arm {
     const arm = this.arms[index];
     if (!arm) {
-      throw new ResistorNetworkError(`No arm exists at index: ${index}`);
+      throw new NetworkTopologyError(`No arm exists at index: ${index}`);
     }
 
     return arm;
