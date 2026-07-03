@@ -18,7 +18,7 @@ export default defineConfigWithVueTs(
 
   {
     ...pluginVitest.configs.recommended,
-    files: ["src/**/__tests__/*"],
+    files: ["src/**/*.{test,spec}.ts"],
   },
 
   // disable the legacy core rules to avoid conflicts

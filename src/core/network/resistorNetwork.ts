@@ -120,7 +120,9 @@ export default class ResistorNetwork {
       } else if (arm.role === "high") {
         arm.voltage = this.highVoltage;
       } else {
-        arm.voltage = starPointVoltage;
+        // A floating arm only settles at the star-point voltage if it has a
+        // conductive path to it; an infinite-resistance arm is fully isolated.
+        arm.voltage = Number.isFinite(arm.resistor.getResistance()) ? starPointVoltage : NaN;
       }
     }
 

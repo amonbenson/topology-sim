@@ -53,11 +53,11 @@ defineProps<{
 }>();
 
 function formatResistance(value: number): string {
-  return Number.isFinite(value) ? `${Math.round(value)}` : "∞";
+  return Number.isFinite(value) ? String(Math.round(value)) : "∞";
 }
 
 function formatVoltage(value: number): string {
-  return Number.isNaN(value) ? "???" : `${value.toFixed(2)}`;
+  return Number.isNaN(value) ? "???" : String(value.toFixed(2));
 }
 </script>
 
