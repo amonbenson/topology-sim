@@ -40,7 +40,7 @@ export interface NetworkSolverOptions {
 
 // Identifies the three arm resistances of a star-connected resistor topology
 // by driving pairs of terminals high/low (third floating) and reading tap
-// voltages only — never the topology's own rail setpoints.
+// voltages only - never the topology's own rail setpoints.
 //
 // The first arm stays driven high for every measurement, and only the other
 // two take turns being driven low. This halves the number of role changes
@@ -55,12 +55,12 @@ export interface NetworkSolverOptions {
 //
 // All resistances are in kΩ and all currents are in mA throughout this class
 // (kΩ × mA = V, so voltage formulas need no unit conversion). Every arm's
-// pull resistance is assumed identical by design — it's a known apparatus
+// pull resistance is assumed identical by design - it's a known apparatus
 // constant, not a property of the unknown network being measured, so reading
 // it directly (from whichever arm happens to be driven high) is fair game.
 export default class NetworkSolver {
   private readonly topology: NetworkTopology;
-  // Neither rail voltage is known in advance — both are fixed properties of
+  // Neither rail voltage is known in advance - both are fixed properties of
   // the topology, measured directly rather than assumed or configured.
   private highRailVoltage = NaN;
   private lowRailVoltage = NaN;
@@ -123,7 +123,7 @@ export default class NetworkSolver {
       // Arm 1 is infinite: it's isolated.
       result = this.resolveFromSinglePair(secondMeasurement, [0, Infinity, 0], [NaN, Infinity, NaN]);
     } else {
-      // Neither measurement conducted, so arm 0 must be isolated — confirm
+      // Neither measurement conducted, so arm 0 must be isolated - confirm
       // with the one measurement that hasn't been taken yet.
       const thirdMeasurement = await this.measurePair(1, 2);
       result = thirdMeasurement.conducts
@@ -162,7 +162,7 @@ export default class NetworkSolver {
     const sharedArmResistanceFromSecondMeasurement = (1 - secondMeasurement.lowResistanceFraction) * secondMeasurement.pairResistance;
 
     // Both measurements drove arm 0, so they each produce an independent
-    // estimate of its resistance — these must agree, since they're derived
+    // estimate of its resistance - these must agree, since they're derived
     // from the same underlying three-arm topology. The small epsilon guards
     // against dividing by zero when the shared arm is itself a short (a case
     // the shorted-pair checks above can miss, since a pair sum stays large
@@ -197,7 +197,7 @@ export default class NetworkSolver {
   }
 
   // Drives a single arm at a time, with the other two left floating, so it
-  // carries no current no matter what any arm's resistance is — that tap
+  // carries no current no matter what any arm's resistance is - that tap
   // therefore reads exactly its rail voltage, with no ambiguity, which is
   // the only way to learn each rail's true value from voltage alone.
   private async measureRailVoltages(): Promise<void> {
@@ -240,8 +240,8 @@ export default class NetworkSolver {
     const pullResistance = this.topology.getArmPullResistance(highIndex);
 
     // The current flowing through the high-side pull resistor and the
-    // current flowing through the low-side one are the same current — both
-    // sides of one loop — so comparing them catches an inconsistent reading
+    // current flowing through the low-side one are the same current - both
+    // sides of one loop - so comparing them catches an inconsistent reading
     // before it can corrupt the result. This is an absolute (not relative)
     // comparison, since the current a non-conducting pair reads is legitimately
     // zero, where a relative tolerance would be meaningless.
@@ -286,10 +286,10 @@ export default class NetworkSolver {
       return `${label}: ${(value * result.totalResistance).toFixed(1)} kΩ`;
     });
 
-    const summary = `Solved — ${armDescriptions.join(", ")}`;
+    const summary = `Solved - ${armDescriptions.join(", ")}`;
 
     // The total is still meaningful (and worth surfacing) even when an open
-    // arm makes the other two individually unresolvable — it's only
+    // arm makes the other two individually unresolvable - it's only
     // undefined when nothing in the network is actually driving current.
     return Number.isNaN(result.totalResistance)
       ? summary
