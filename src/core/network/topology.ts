@@ -15,7 +15,7 @@ export type ArmRole = "low" | "high" | "floating";
 // (kΩ × mA = V, so voltage formulas need no unit conversion).
 interface Arm {
   readonly resistor: Resistor;
-  // Sits between the pullup/pulldown rail and the arm's own resistance —
+  // Sits between the pullup/pulldown rail and the arm's own resistance -
   // only carries current while this arm is actively driven high or low.
   pullResistance: number;
   role: ArmRole;

@@ -47,7 +47,7 @@ describe("NetworkSolver", () => {
 
   it("reads whatever pull resistance is actually configured, rather than assuming the 1kΩ default", async () => {
     const topology = buildTopology([10, 22, 47]);
-    // All three arms share the same, non-default pull resistance — matching
+    // All three arms share the same, non-default pull resistance - matching
     // the algorithm's assumption that every arm's pull resistance is equal.
     topology.setArmPullResistance(0, 5);
     topology.setArmPullResistance(1, 5);
@@ -197,7 +197,7 @@ describe("NetworkSolver", () => {
 
   it("resolves correctly when the shared arm is exactly zero, which makes both its resistance estimates zero too", async () => {
     // Arm 0 (shared between both measurements) is a genuine short, while its
-    // pair sums (0+100=100, 0+220=220) stay well above the short threshold —
+    // pair sums (0+100=100, 0+220=220) stay well above the short threshold -
     // so neither shortcut check catches it, and this exercises the generic
     // resolution path's consistency check exactly at 0/0.
     const solver = new NetworkSolver(buildTopology([0, 100, 220]));
@@ -220,7 +220,7 @@ describe("NetworkSolver", () => {
       // The first two calls are the rail calibration (arm 0 driven alone);
       // from the third call onward, inject a fixed offset into arm 0's
       // reading. A real topology can never actually produce a mismatch here
-      // — this simulates the kind of noisy/inconsistent reading real
+      // - this simulates the kind of noisy/inconsistent reading real
       // hardware could.
       return callCount > 2 && index === 0 ? voltage - 0.01 : voltage;
     };
@@ -235,7 +235,7 @@ describe("NetworkSolver", () => {
 
     // This bypasses the public API to call the internal resolution step
     // directly, with two measurements that are individually well-formed but
-    // mutually inconsistent about arm 0's resistance (100 vs. 150) — a
+    // mutually inconsistent about arm 0's resistance (100 vs. 150) - a
     // situation that can't arise from a real topology's own physics (see the
     // test above and below for that), but that real hardware noise could.
     const resolveFromBothMeasurements = (

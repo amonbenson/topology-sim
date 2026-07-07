@@ -5,7 +5,7 @@ import NetworkTopology, { NetworkTopologyError } from "./topology";
 // Default configuration for every test: arm 0 = high (100kΩ), arm 1 =
 // floating (200kΩ), arm 2 = low (300kΩ), lowVoltage = 0V, highVoltage = 3.3V.
 // Every arm also has a 1kΩ pull resistance by default, which is why a driven
-// arm's own tap voltage is close to — but not exactly — its rail voltage.
+// arm's own tap voltage is close to - but not exactly - its rail voltage.
 
 describe("NetworkTopology", () => {
   it("computes the star-point voltage for the default configuration", () => {

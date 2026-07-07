@@ -97,7 +97,7 @@ export default defineConfigWithVueTs(
         allowTypedFunctionExpressions: true, // allow arrow functions like: const fn: MyType = () => 42
       }],
 
-      // Always require curly braces for if/else/for/while/do — no braceless one-liners.
+      // Always require curly braces for if/else/for/while/do - no braceless one-liners.
       // This is a logic/correctness rule (not stylistic), so it stays in core ESLint.
       "curly": ["error", "all"],
 

@@ -9,7 +9,7 @@ import NetworkTopology, { type ArmRole } from "@/core/network/topology";
 export type { ArmRole };
 
 // The shape an arm actually has once Pinia unwraps the underlying
-// WritableComputedRefs — this is what templates and props see, not the
+// WritableComputedRefs - this is what templates and props see, not the
 // store's own internal representation.
 export interface ResistorArm {
   readonly index: number;
