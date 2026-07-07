@@ -26,10 +26,11 @@ interface PairMeasurement {
 }
 
 export interface NetworkSolverOptions {
-  readonly openVoltageThreshold?: number;
+  readonly openCurrentThreshold?: number;
   readonly shortResistanceThreshold?: number;
   readonly currentConsistencyThreshold?: number;
-  readonly consistencyRelativeThreshold?: number;
+  readonly resistanceConsistencyThreshold?: number;
+  readonly resistanceSumEpsilon?: number;
   readonly ratioDivisionEpsilon?: number;
   // How long to pause after each measurement step, so a caller can visually
   // step through the process. Defaults to 0 (no real delay), which keeps
@@ -38,25 +39,36 @@ export interface NetworkSolverOptions {
 }
 
 // Identifies the three arm resistances of a star-connected resistor topology
-// by driving each pair of terminals high/low (third floating) in turn and
-// reading tap voltages only (never the topology's own rail setpoints) — the
-// same measurement protocol a real three-terminal detector circuit would use.
+// by driving pairs of terminals high/low (third floating) and reading tap
+// voltages only — never the topology's own rail setpoints.
+//
+// The first arm stays driven high for every measurement, and only the other
+// two take turns being driven low. This halves the number of role changes
+// compared to rotating through every pair, which matters on real hardware
+// where reconfiguring a pin is comparatively slow. Because both measurements
+// share the first arm, it ends up with two independent resistance estimates
+// that must agree with each other; the other two arms each get only one. A
+// third measurement, between the second and third arms, is only needed to
+// tell apart "the first arm is isolated" from "the network is fully
+// disconnected", since neither of the first two measurements would conduct
+// in either case.
 //
 // All resistances are in kΩ and all currents are in mA throughout this class
-// (kΩ × mA = V, so voltage formulas need no unit conversion). The topology's
-// pull resistors are known apparatus constants — unlike the rail voltages,
-// they're properties of the detector's own circuitry, not of the unknown
-// network being measured, so reading them directly is fair game.
+// (kΩ × mA = V, so voltage formulas need no unit conversion). Every arm's
+// pull resistance is assumed identical by design — it's a known apparatus
+// constant, not a property of the unknown network being measured, so reading
+// it directly (from whichever arm happens to be driven high) is fair game.
 export default class NetworkSolver {
   private readonly topology: NetworkTopology;
   // Neither rail voltage is known in advance — both are fixed properties of
   // the topology, measured directly rather than assumed or configured.
   private highRailVoltage = NaN;
   private lowRailVoltage = NaN;
-  private readonly openVoltageThreshold: number;
+  private readonly openCurrentThreshold: number;
   private readonly shortResistanceThreshold: number;
   private readonly currentConsistencyThreshold: number;
-  private readonly consistencyRelativeThreshold: number;
+  private readonly resistanceConsistencyThreshold: number;
+  private readonly resistanceSumEpsilon: number;
   private readonly ratioDivisionEpsilon: number;
   private readonly stepDelayMs: number;
 
@@ -72,10 +84,11 @@ export default class NetworkSolver {
     }
 
     this.topology = topology;
-    this.openVoltageThreshold = options.openVoltageThreshold ?? 1e-9;
+    this.openCurrentThreshold = options.openCurrentThreshold ?? 1e-9;
     this.shortResistanceThreshold = options.shortResistanceThreshold ?? 1e-6;
     this.currentConsistencyThreshold = options.currentConsistencyThreshold ?? 1e-9;
-    this.consistencyRelativeThreshold = options.consistencyRelativeThreshold ?? 1e-6;
+    this.resistanceConsistencyThreshold = options.resistanceConsistencyThreshold ?? 1e-6;
+    this.resistanceSumEpsilon = options.resistanceSumEpsilon ?? 1e-9;
     this.ratioDivisionEpsilon = options.ratioDivisionEpsilon ?? 1e-12;
     this.stepDelayMs = options.stepDelayMs ?? 0;
   }
@@ -97,25 +110,25 @@ export default class NetworkSolver {
 
     await this.measureRailVoltages();
 
-    const measurementAB = await this.measurePair(0, 1); // A high, B low: ratio = rB / (rA + rB)
-    const measurementBC = await this.measurePair(1, 2); // B high, C low: ratio = rC / (rB + rC)
+    const firstMeasurement = await this.measurePair(0, 1); // arm 0 high, arm 1 low, arm 2 floating
+    const secondMeasurement = await this.measurePair(0, 2); // arm 0 high, arm 2 low, arm 1 floating
 
     let result: NetworkSolution;
-    if (measurementAB.conducts && measurementBC.conducts) {
-      result = this.resolveFromTwoPairs(measurementAB, measurementBC);
-    } else if (measurementAB.conducts) {
-      // rC is infinite: C is isolated.
-      result = this.resolveFromSinglePair(measurementAB, [0, 0, Infinity], [NaN, NaN, Infinity]);
-    } else if (measurementBC.conducts) {
-      // rA is infinite: A is isolated.
-      result = this.resolveFromSinglePair(measurementBC, [Infinity, 0, 0], [Infinity, NaN, NaN]);
+    if (firstMeasurement.conducts && secondMeasurement.conducts) {
+      result = this.resolveFromBothMeasurements(firstMeasurement, secondMeasurement);
+    } else if (firstMeasurement.conducts) {
+      // Arm 2 is infinite: it's isolated.
+      result = this.resolveFromSinglePair(firstMeasurement, [0, 0, Infinity], [NaN, NaN, Infinity]);
+    } else if (secondMeasurement.conducts) {
+      // Arm 1 is infinite: it's isolated.
+      result = this.resolveFromSinglePair(secondMeasurement, [0, Infinity, 0], [NaN, Infinity, NaN]);
     } else {
-      // Neither pair conducted, so the isolated arm must be B — confirm with
-      // the one measurement that hasn't been taken yet.
-      const measurementCA = await this.measurePair(2, 0); // C high, A low: ratio = rA / (rC + rA)
-      result = measurementCA.conducts
-        // rB is infinite: B is isolated.
-        ? this.resolveFromSinglePair(measurementCA, [0, Infinity, 0], [NaN, Infinity, NaN])
+      // Neither measurement conducted, so arm 0 must be isolated — confirm
+      // with the one measurement that hasn't been taken yet.
+      const thirdMeasurement = await this.measurePair(1, 2);
+      result = thirdMeasurement.conducts
+        // Arm 0 is infinite: it's isolated.
+        ? this.resolveFromSinglePair(thirdMeasurement, [Infinity, 0, 0], [Infinity, NaN, NaN])
         : { arms: [Infinity, Infinity, Infinity], totalResistance: NaN };
     }
 
@@ -125,45 +138,50 @@ export default class NetworkSolver {
     return result;
   }
 
-  private resolveFromTwoPairs(measurementAB: PairMeasurement, measurementBC: PairMeasurement): NetworkSolution {
-    const shortAB = measurementAB.pairResistance < this.shortResistanceThreshold;
-    const shortBC = measurementBC.pairResistance < this.shortResistanceThreshold;
+  private resolveFromBothMeasurements(firstMeasurement: PairMeasurement, secondMeasurement: PairMeasurement): NetworkSolution {
+    const firstPairIsShorted = firstMeasurement.pairResistance < this.shortResistanceThreshold;
+    const secondPairIsShorted = secondMeasurement.pairResistance < this.shortResistanceThreshold;
 
-    if (shortAB && shortBC) {
+    if (firstPairIsShorted && secondPairIsShorted) {
       return { arms: [0, 0, 0], totalResistance: NaN };
     }
 
-    if (shortAB) {
-      return { arms: [0, 0, 1], totalResistance: measurementBC.pairResistance };
+    if (firstPairIsShorted) {
+      // Arms 0 and 1 are shorted, so arm 2 holds the entire remaining resistance.
+      return { arms: [0, 0, 1], totalResistance: secondMeasurement.pairResistance };
     }
 
-    if (shortBC) {
-      return { arms: [1, 0, 0], totalResistance: measurementAB.pairResistance };
+    if (secondPairIsShorted) {
+      // Arms 0 and 2 are shorted, so arm 1 holds the entire remaining resistance.
+      return { arms: [0, 1, 0], totalResistance: firstMeasurement.pairResistance };
     }
 
-    const ratioAB = measurementAB.lowResistanceFraction; // rB / (rA + rB)
-    const ratioBC = measurementBC.lowResistanceFraction; // rC / (rB + rC)
+    const secondArmResistance = firstMeasurement.lowResistanceFraction * firstMeasurement.pairResistance;
+    const thirdArmResistance = secondMeasurement.lowResistanceFraction * secondMeasurement.pairResistance;
+    const sharedArmResistanceFromFirstMeasurement = (1 - firstMeasurement.lowResistanceFraction) * firstMeasurement.pairResistance;
+    const sharedArmResistanceFromSecondMeasurement = (1 - secondMeasurement.lowResistanceFraction) * secondMeasurement.pairResistance;
 
-    const unnormalizedA = (1 - ratioAB) * (1 - ratioBC);
-    const unnormalizedB = ratioAB * (1 - ratioBC);
-    const unnormalizedC = ratioAB * ratioBC;
-    const unnormalizedSum = unnormalizedA + unnormalizedB + unnormalizedC;
-
-    const a = unnormalizedA / unnormalizedSum;
-    const b = unnormalizedB / unnormalizedSum;
-    const c = unnormalizedC / unnormalizedSum;
-
-    // Two independent estimates of the total resistance must agree, since
-    // they're both derived from the same underlying three-arm topology.
-    const scaleFromAB = measurementAB.pairResistance / (a + b);
-    const scaleFromBC = measurementBC.pairResistance / (b + c);
-    if (Math.abs(scaleFromAB - scaleFromBC) / (scaleFromAB + scaleFromBC) > this.consistencyRelativeThreshold) {
+    // Both measurements drove arm 0, so they each produce an independent
+    // estimate of its resistance — these must agree, since they're derived
+    // from the same underlying three-arm topology. The small epsilon guards
+    // against dividing by zero when the shared arm is itself a short (a case
+    // the shorted-pair checks above can miss, since a pair sum stays large
+    // as long as the *other* arm in it isn't also small).
+    const sharedArmResistanceSum = sharedArmResistanceFromFirstMeasurement + sharedArmResistanceFromSecondMeasurement;
+    const sharedArmDisagreement = Math.abs(sharedArmResistanceFromFirstMeasurement - sharedArmResistanceFromSecondMeasurement);
+    if (sharedArmDisagreement / (sharedArmResistanceSum + this.resistanceSumEpsilon) > this.resistanceConsistencyThreshold) {
       throw new NetworkSolverError(
-        `Total resistance estimates disagree: fromLowHigh=${scaleFromAB.toFixed(4)}, fromHighLow=${scaleFromBC.toFixed(4)}`,
+        `Shared arm resistance estimates disagree: fromFirstMeasurement=${sharedArmResistanceFromFirstMeasurement.toFixed(4)}, fromSecondMeasurement=${sharedArmResistanceFromSecondMeasurement.toFixed(4)}`,
       );
     }
 
-    return { arms: [a, b, c], totalResistance: (scaleFromAB + scaleFromBC) / 2 };
+    const sharedArmResistance = sharedArmResistanceSum / 2;
+    const totalResistance = sharedArmResistance + secondArmResistance + thirdArmResistance;
+
+    return {
+      arms: [sharedArmResistance / totalResistance, secondArmResistance / totalResistance, thirdArmResistance / totalResistance],
+      totalResistance,
+    };
   }
 
   private resolveFromSinglePair(
@@ -217,34 +235,31 @@ export default class NetworkSolver {
     const lowVoltage = this.topology.getArmVoltage(lowIndex);
     const floatingVoltage = this.topology.getArmVoltage(floatingIndex);
 
-    // Each driven arm has its own pull resistance (defaults to 1kΩ, but
-    // isn't assumed equal across arms), so the two sides of the loop are
-    // checked and solved independently rather than symmetrically.
-    const highProtection = this.topology.getArmPullResistance(highIndex);
-    const lowProtection = this.topology.getArmPullResistance(lowIndex);
+    // Every arm shares the same pull resistance by design, so whichever one
+    // is currently driven high stands in for all of them.
+    const pullResistance = this.topology.getArmPullResistance(highIndex);
 
-    // Current flowing through the low-side protection resistors raises that
-    // tap above its true (measured) rail voltage, and flowing through the
-    // high-side ones lowers that tap below its rail voltage by the same
-    // current — both sides must agree on what that current is.
-    const lowRise = lowVoltage - this.lowRailVoltage;
-    const highDrop = this.highRailVoltage - highVoltage;
-    const currentFromLow = lowRise / lowProtection;
-    const currentFromHigh = highDrop / highProtection;
-    if (Math.abs(currentFromLow - currentFromHigh) > this.currentConsistencyThreshold) {
+    // The current flowing through the high-side pull resistor and the
+    // current flowing through the low-side one are the same current — both
+    // sides of one loop — so comparing them catches an inconsistent reading
+    // before it can corrupt the result. This is an absolute (not relative)
+    // comparison, since the current a non-conducting pair reads is legitimately
+    // zero, where a relative tolerance would be meaningless.
+    const currentFromHighSide = (this.highRailVoltage - highVoltage) / pullResistance;
+    const currentFromLowSide = (lowVoltage - this.lowRailVoltage) / pullResistance;
+    if (Math.abs(currentFromHighSide - currentFromLowSide) > this.currentConsistencyThreshold) {
       throw new NetworkSolverError(
-        `Loop current identity violated: fromLow=${currentFromLow.toFixed(6)} mA, fromHigh=${currentFromHigh.toFixed(6)} mA`,
+        `Loop current identity violated: fromHighSide=${currentFromHighSide.toFixed(6)} mA, fromLowSide=${currentFromLowSide.toFixed(6)} mA`,
       );
     }
 
-    const conducts = lowRise > this.openVoltageThreshold;
-    if (!conducts) {
+    const current = (currentFromHighSide + currentFromLowSide) / 2;
+    if (current <= this.openCurrentThreshold) {
       return { conducts: false, pairResistance: NaN, lowResistanceFraction: NaN };
     }
 
     const voltageSpan = highVoltage - lowVoltage;
-    const railDifference = this.highRailVoltage - this.lowRailVoltage;
-    const pairResistance = (railDifference * lowProtection) / lowRise - highProtection - lowProtection;
+    const pairResistance = voltageSpan / current;
     const lowResistanceFraction = voltageSpan > this.ratioDivisionEpsilon
       ? (floatingVoltage - lowVoltage) / voltageSpan
       : NaN;
