@@ -45,12 +45,10 @@ describe("NetworkSolver", () => {
     expect(result.totalResistance).toBeCloseTo(79);
   });
 
-  it("resolves correctly even when each arm's pull and measurement resistances differ", async () => {
+  it("resolves correctly even when each arm's pull resistance differs", async () => {
     const topology = buildTopology([10, 22, 47]);
-    topology.setArmPullResistance(0, 2);
-    topology.setArmMeasurementResistance(0, 3);
-    topology.setArmPullResistance(2, 4);
-    topology.setArmMeasurementResistance(2, 0.5);
+    topology.setArmPullResistance(0, 5);
+    topology.setArmPullResistance(2, 4.5);
     const solver = new NetworkSolver(topology);
 
     const result = await solver.solve();
@@ -96,6 +94,24 @@ describe("NetworkSolver", () => {
     expect(result.arms[1]).toBeNaN();
     expect(result.arms[2]).toBe(Infinity);
     expect(result.totalResistance).toBeCloseTo(100 + 900);
+  });
+
+  it("still reports the total resistance in the status text when individual arms are unresolved", async () => {
+    const solver = new NetworkSolver(buildTopology([100, 900, Infinity]));
+
+    await solver.solve();
+
+    expect(solver.getStatus()).toContain("Tap 1: unresolved");
+    expect(solver.getStatus()).toContain("Tap 3: open");
+    expect(solver.getStatus()).toContain("total: 1000.0 kΩ");
+  });
+
+  it("omits the total resistance from the status text when it's undefined", async () => {
+    const solver = new NetworkSolver(buildTopology([Infinity, Infinity, Infinity]));
+
+    await solver.solve();
+
+    expect(solver.getStatus()).not.toContain("total:");
   });
 
   it("reports the B-C pair as an unresolvable sum when A is isolated (open)", async () => {

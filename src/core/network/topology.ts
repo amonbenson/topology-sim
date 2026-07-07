@@ -15,22 +15,18 @@ export type ArmRole = "low" | "high" | "floating";
 // (kΩ × mA = V, so voltage formulas need no unit conversion).
 interface Arm {
   readonly resistor: Resistor;
-  // Sits between the pullup/pulldown rail and the measurement resistor —
+  // Sits between the pullup/pulldown rail and the arm's own resistance —
   // only carries current while this arm is actively driven high or low.
   pullResistance: number;
-  // Sits right before the voltage measurement tap, between the pull
-  // resistor and the arm's own resistance. Present for every arm, but only
-  // matters electrically while driven, for the same reason as pullResistance.
-  measurementResistance: number;
   role: ArmRole;
   voltage: number;
 }
 
 export default class NetworkTopology {
   private readonly arms: Arm[] = [
-    { resistor: new Resistor(100), pullResistance: 1, measurementResistance: 1, role: "high", voltage: 0 },
-    { resistor: new Resistor(200), pullResistance: 1, measurementResistance: 1, role: "floating", voltage: 0 },
-    { resistor: new Resistor(300), pullResistance: 1, measurementResistance: 1, role: "low", voltage: 0 },
+    { resistor: new Resistor(100), pullResistance: 1, role: "high", voltage: 0 },
+    { resistor: new Resistor(200), pullResistance: 1, role: "floating", voltage: 0 },
+    { resistor: new Resistor(300), pullResistance: 1, role: "low", voltage: 0 },
   ];
 
   private lowVoltage = 0;
@@ -83,15 +79,6 @@ export default class NetworkTopology {
     this.recalculateVoltages();
   }
 
-  getArmMeasurementResistance(index: number): number {
-    return this.getArm(index).measurementResistance;
-  }
-
-  setArmMeasurementResistance(index: number, value: number): void {
-    this.getArm(index).measurementResistance = value;
-    this.recalculateVoltages();
-  }
-
   getLowVoltage(): number {
     return this.lowVoltage;
   }
@@ -128,10 +115,10 @@ export default class NetworkTopology {
         continue;
       }
 
-      // The pull and measurement resistors sit in series with the arm on the
-      // path to the star point, so together they lower that path's
-      // conductance the same way the arm's own resistance does.
-      const seriesResistance = arm.pullResistance + arm.measurementResistance + arm.resistor.getResistance();
+      // The pull resistor sits in series with the arm on the path to the
+      // star point, so it lowers that path's conductance the same way the
+      // arm's own resistance does.
+      const seriesResistance = arm.pullResistance + arm.resistor.getResistance();
       const conductance = 1 / seriesResistance;
       const drivenVoltage = arm.role === "high" ? this.highVoltage : this.lowVoltage;
 
@@ -154,15 +141,14 @@ export default class NetworkTopology {
 
       const railVoltage = arm.role === "high" ? this.highVoltage : this.lowVoltage;
       const armResistance = arm.resistor.getResistance();
-      const protectionResistance = arm.pullResistance + arm.measurementResistance;
 
       // The current flowing from this arm's rail to the star point causes a
-      // voltage drop across the pull and measurement resistors, so the tap
-      // itself reads slightly off the rail voltage. An infinite arm
-      // resistance carries no current no matter what the star-point voltage
-      // is (even if it's NaN, e.g. every driven arm is infinite).
-      const current = Number.isFinite(armResistance) ? (railVoltage - starPointVoltage) / (protectionResistance + armResistance) : 0;
-      arm.voltage = railVoltage - current * protectionResistance;
+      // voltage drop across the pull resistor, so the tap itself reads
+      // slightly off the rail voltage. An infinite arm resistance carries no
+      // current no matter what the star-point voltage is (even if it's NaN,
+      // e.g. every driven arm is infinite).
+      const current = Number.isFinite(armResistance) ? (railVoltage - starPointVoltage) / (arm.pullResistance + armResistance) : 0;
+      arm.voltage = railVoltage - current * arm.pullResistance;
     }
 
     this.voltageChangeEmitter.fire();

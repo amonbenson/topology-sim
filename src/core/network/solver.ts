@@ -44,9 +44,9 @@ export interface NetworkSolverOptions {
 //
 // All resistances are in kΩ and all currents are in mA throughout this class
 // (kΩ × mA = V, so voltage formulas need no unit conversion). The topology's
-// pull and measurement resistors are known apparatus constants — unlike the
-// rail voltages, they're properties of the detector's own circuitry, not of
-// the unknown network being measured, so reading them directly is fair game.
+// pull resistors are known apparatus constants — unlike the rail voltages,
+// they're properties of the detector's own circuitry, not of the unknown
+// network being measured, so reading them directly is fair game.
 export default class NetworkSolver {
   private readonly topology: NetworkTopology;
   // Neither rail voltage is known in advance — both are fixed properties of
@@ -217,11 +217,11 @@ export default class NetworkSolver {
     const lowVoltage = this.topology.getArmVoltage(lowIndex);
     const floatingVoltage = this.topology.getArmVoltage(floatingIndex);
 
-    // Each driven arm has its own pull + measurement resistance (both
-    // default to 1kΩ, but aren't assumed equal), so the two sides of the
-    // loop are checked and solved independently rather than symmetrically.
-    const highProtection = this.topology.getArmPullResistance(highIndex) + this.topology.getArmMeasurementResistance(highIndex);
-    const lowProtection = this.topology.getArmPullResistance(lowIndex) + this.topology.getArmMeasurementResistance(lowIndex);
+    // Each driven arm has its own pull resistance (defaults to 1kΩ, but
+    // isn't assumed equal across arms), so the two sides of the loop are
+    // checked and solved independently rather than symmetrically.
+    const highProtection = this.topology.getArmPullResistance(highIndex);
+    const lowProtection = this.topology.getArmPullResistance(lowIndex);
 
     // Current flowing through the low-side protection resistors raises that
     // tap above its true (measured) rail voltage, and flowing through the
@@ -271,7 +271,14 @@ export default class NetworkSolver {
       return `${label}: ${(value * result.totalResistance).toFixed(1)} kΩ`;
     });
 
-    return `Solved — ${armDescriptions.join(", ")}`;
+    const summary = `Solved — ${armDescriptions.join(", ")}`;
+
+    // The total is still meaningful (and worth surfacing) even when an open
+    // arm makes the other two individually unresolvable — it's only
+    // undefined when nothing in the network is actually driving current.
+    return Number.isNaN(result.totalResistance)
+      ? summary
+      : `${summary} (total: ${result.totalResistance.toFixed(1)} kΩ)`;
   }
 
   private reportStatus(status: string): void {

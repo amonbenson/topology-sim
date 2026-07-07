@@ -16,12 +16,16 @@ export interface ResistorArm {
   readonly role: ArmRole;
   readonly resistance: number;
   readonly pullResistance: number;
-  readonly measurementResistance: number;
   readonly voltage: number;
 }
 
 export const useProjectStore = defineStore("project", () => {
+  // Initialize topology with all arms floating
   const topology = new NetworkTopology();
+  for (let i = 0; i < topology.armCount; i++) {
+    topology.setArmRole(i, "floating");
+  }
+
   const solver = new NetworkSolver(topology, { stepDelayMs: 1000 });
 
   const arms = Array.from({ length: topology.armCount }, (_, index) => ({
@@ -39,11 +43,6 @@ export const useProjectStore = defineStore("project", () => {
     pullResistance: useProperty(
       () => topology.getArmPullResistance(index),
       (value: number) => topology.setArmPullResistance(index, value),
-      topology.onVoltageChange,
-    ),
-    measurementResistance: useProperty(
-      () => topology.getArmMeasurementResistance(index),
-      (value: number) => topology.setArmMeasurementResistance(index, value),
       topology.onVoltageChange,
     ),
     voltage: useProperty(
